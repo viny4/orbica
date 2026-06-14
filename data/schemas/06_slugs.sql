@@ -1,4 +1,4 @@
--- ROCKETPEDIA — human-readable, SEO-friendly URL slugs for rockets, satellites
+-- ORBICA — human-readable, SEO-friendly URL slugs for rockets, satellites
 -- and agencies (e.g. /rockets/falcon-9 instead of a UUID). Unique per table;
 -- the "primary" entry (most launches / earliest) keeps the clean slug, dupes get
 -- a numeric suffix.

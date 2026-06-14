@@ -1,4 +1,4 @@
--- ROCKETPEDIA — schema adjustments discovered during ingestion.
+-- ORBICA — schema adjustments discovered during ingestion.
 --
 -- Launch Library 2 identifies LAUNCHES by UUID string (only agencies and
 -- launcher_configurations use integer ids). The base schema's launch_events.ll2_id

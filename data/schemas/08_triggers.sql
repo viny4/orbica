@@ -1,4 +1,4 @@
--- ROCKETPEDIA — the few triggers worth having.
+-- ORBICA — the few triggers worth having.
 --
 -- Philosophy: this is a read-heavy catalogue with batched writes, so we avoid
 -- trigger "magic" almost everywhere. We add exactly two integrity guards that

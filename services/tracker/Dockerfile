@@ -1,4 +1,4 @@
-# Rocketpedia Tracker — multi-stage Go build
+# Orbica Tracker — multi-stage Go build
 FROM golang:1.22-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum* ./

@@ -20,7 +20,7 @@ log = logging.getLogger("ll2")
 class LL2Client:
     def __init__(self, base_url: str | None = None, api_key: str | None = None) -> None:
         self.base_url = (base_url or settings.ll2_base_url).rstrip("/")
-        headers = {"User-Agent": "rocketpedia/0.1 (+https://rocketpedia.dev)"}
+        headers = {"User-Agent": "orbica/0.1 (+https://orbica.space)"}
         if api_key or settings.ll2_api_key:
             headers["Authorization"] = f"Token {api_key or settings.ll2_api_key}"
         self._client = httpx.Client(

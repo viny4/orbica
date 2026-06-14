@@ -1,4 +1,4 @@
-# Rocketpedia Web — Next.js 14 standalone build
+# Orbica Web — Next.js 14 standalone build
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./

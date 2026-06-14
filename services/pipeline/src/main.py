@@ -13,12 +13,12 @@ from src.db.pool import refresh_year_summary
 from src.seed import historical_seed, satellites_seed
 
 logging.basicConfig(level=logging.INFO)
-app = FastAPI(title="Rocketpedia Pipeline", version="0.1.0")
+app = FastAPI(title="Orbica Pipeline", version="0.1.0")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "rocketpedia-pipeline"}
+    return {"status": "ok", "service": "orbica-pipeline"}
 
 
 @app.post("/sync/launches")

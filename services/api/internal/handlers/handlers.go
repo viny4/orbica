@@ -1,4 +1,4 @@
-// Package handlers implements the REST endpoints for the Rocketpedia API.
+// Package handlers implements the REST endpoints for the Orbica API.
 package handlers
 
 import (

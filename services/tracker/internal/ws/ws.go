@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/rocketpedia/tracker/internal/hub"
-	"github.com/rocketpedia/tracker/internal/propagate"
+	"github.com/orbica/tracker/internal/hub"
+	"github.com/orbica/tracker/internal/propagate"
 )
 
 var upgrader = websocket.Upgrader{

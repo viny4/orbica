@@ -1,4 +1,4 @@
--- ROCKETPEDIA — extensions
+-- ORBICA — extensions
 -- Enable everything the schema relies on. Order matters: extensions first.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";      -- gen_random_uuid()

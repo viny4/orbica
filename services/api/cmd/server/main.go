@@ -1,4 +1,4 @@
-// Rocketpedia REST + GraphQL API server.
+// Orbica REST + GraphQL API server.
 package main
 
 import (
@@ -15,9 +15,9 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
 
-	"github.com/rocketpedia/api/internal/config"
-	"github.com/rocketpedia/api/internal/db"
-	"github.com/rocketpedia/api/internal/handlers"
+	"github.com/orbica/api/internal/config"
+	"github.com/orbica/api/internal/db"
+	"github.com/orbica/api/internal/handlers"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 	defer pool.Close()
 
 	app := fiber.New(fiber.Config{
-		AppName:      "rocketpedia-api",
+		AppName:      "orbica-api",
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 30 * time.Second,
 	})
@@ -52,7 +52,7 @@ func main() {
 	}()
 
 	addr := ":" + cfg.Port
-	log.Printf("rocketpedia-api listening on %s", addr)
+	log.Printf("orbica-api listening on %s", addr)
 	if err := app.Listen(addr); err != nil {
 		log.Fatalf("listen: %v", err)
 	}

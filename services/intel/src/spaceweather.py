@@ -46,7 +46,7 @@ def _last(data, dict_key: str, list_idx: int):
 
 def fetch() -> dict:
     out = {"kp": None, "wind": None}
-    with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent": "rocketpedia/0.1"}) as c:
+    with httpx.Client(timeout=20.0, follow_redirects=True, headers={"User-Agent": "orbica/0.1"}) as c:
         try:
             out["kp"] = _last(c.get(KP_URL).json(), "Kp", 1)
         except Exception as exc:

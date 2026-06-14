@@ -1,4 +1,4 @@
--- ROCKETPEDIA — "Space Intelligence": original, computed data the intel service
+-- ORBICA — "Space Intelligence": original, computed data the intel service
 -- produces from our TLE catalogue + space-weather feeds (not relayed articles).
 
 -- Close approaches between catalogued objects (conjunction screening).

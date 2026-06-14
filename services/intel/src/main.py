@@ -1,4 +1,4 @@
-"""Rocketpedia Intel — control plane.
+"""Orbica Intel — control plane.
 
 Computes original "space intelligence" from the TLE catalogue + space-weather
 feeds (conjunctions, reentry watch, geomagnetic conditions) and writes it to the
@@ -14,12 +14,12 @@ from fastapi import BackgroundTasks, FastAPI
 from src import conjunctions, reentry, spaceweather
 
 logging.basicConfig(level=logging.INFO)
-app = FastAPI(title="Rocketpedia Intel", version="0.1.0")
+app = FastAPI(title="Orbica Intel", version="0.1.0")
 
 
 @app.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "service": "rocketpedia-intel"}
+    return {"status": "ok", "service": "orbica-intel"}
 
 
 @app.post("/refresh/reentry")

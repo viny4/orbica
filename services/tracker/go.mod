@@ -1,4 +1,4 @@
-module github.com/rocketpedia/tracker
+module github.com/orbica/tracker
 
 go 1.22
 

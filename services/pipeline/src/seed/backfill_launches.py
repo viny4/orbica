@@ -55,7 +55,7 @@ def _write_offset(offset: int) -> None:
 
 
 def _client() -> httpx.Client:
-    headers = {"User-Agent": "rocketpedia/0.1 (+https://rocketpedia.dev)"}
+    headers = {"User-Agent": "orbica/0.1 (+https://orbica.space)"}
     if settings.ll2_api_key:
         headers["Authorization"] = f"Token {settings.ll2_api_key}"
     return httpx.Client(

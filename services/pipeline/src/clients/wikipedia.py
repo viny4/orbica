@@ -24,7 +24,7 @@ class WikipediaClient:
     def __init__(self) -> None:
         # Wikimedia requires a descriptive UA with a contact URL, else 403.
         self._c = httpx.Client(
-            headers={"User-Agent": "Rocketpedia/0.1 (https://github.com/rocketpedia; rocketpedia@example.com)"},
+            headers={"User-Agent": "Orbica/0.1 (https://github.com/orbica; orbica@example.com)"},
             timeout=20.0,
             follow_redirects=True,
         )

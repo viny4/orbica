@@ -1,4 +1,4 @@
--- ROCKETPEDIA — time-series (TimescaleDB) + materialized views
+-- ORBICA — time-series (TimescaleDB) + materialized views
 -- TLE snapshots are append-heavy and queried by (satellite, time) → hypertable.
 
 CREATE TABLE IF NOT EXISTS tle_snapshots (

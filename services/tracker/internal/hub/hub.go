@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rocketpedia/tracker/internal/propagate"
+	"github.com/orbica/tracker/internal/propagate"
 )
 
 // Client is anything that can receive position JSON payloads.

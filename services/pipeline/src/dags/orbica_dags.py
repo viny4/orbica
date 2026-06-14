@@ -1,4 +1,4 @@
-"""Airflow DAGs for scheduled Rocketpedia syncs.
+"""Airflow DAGs for scheduled Orbica syncs.
 
   sync_launches    every 6h   — refresh launches + agencies + rockets
   sync_tle         every 2h   — refresh active-satellite TLEs
@@ -17,7 +17,7 @@ from src.db.pool import refresh_year_summary
 from src.seed import historical_seed, satellites_seed
 
 default_args = {
-    "owner": "rocketpedia",
+    "owner": "orbica",
     "retries": 3,
     "retry_delay": timedelta(minutes=5),
 }
@@ -44,7 +44,7 @@ with DAG(
     schedule="0 */6 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["rocketpedia"],
+    tags=["orbica"],
 ) as sync_launches_dag:
     PythonOperator(task_id="sync_launches", python_callable=_sync_launches)
 
@@ -54,7 +54,7 @@ with DAG(
     schedule="0 */2 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["rocketpedia"],
+    tags=["orbica"],
 ) as sync_tle_dag:
     PythonOperator(task_id="sync_tle", python_callable=_sync_tle)
 
@@ -64,6 +64,6 @@ with DAG(
     schedule="0 3 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
-    tags=["rocketpedia"],
+    tags=["orbica"],
 ) as sync_satellites_dag:
     PythonOperator(task_id="sync_satellites", python_callable=_sync_satellites)

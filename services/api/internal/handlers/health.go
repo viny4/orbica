@@ -26,6 +26,6 @@ func (h *Handlers) Health(c *fiber.Ctx) error {
 	return c.Status(code).JSON(fiber.Map{
 		"status":   status,
 		"database": dbOK,
-		"service":  "rocketpedia-api",
+		"service":  "orbica-api",
 	})
 }

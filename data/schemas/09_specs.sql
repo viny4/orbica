@@ -1,4 +1,4 @@
--- ROCKETPEDIA — spacecraft physical/operational specs that SATCAT lacks but the
+-- ORBICA — spacecraft physical/operational specs that SATCAT lacks but the
 -- UCS Satellite Database provides (mass, power, lifetime are existing columns;
 -- these three are new). Joined by NORAD id.
 

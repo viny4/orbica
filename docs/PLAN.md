@@ -1,4 +1,4 @@
-# ROCKETPEDIA — Complete Build Plan
+# ORBICA — Complete Build Plan
 
 > What we're building: The world's most complete encyclopedia of every rocket and satellite ever launched (1957-present) — with year-by-year and organization-first navigation, deep rocket/satellite detail pages, and live 3D visualization (3D rocket models + real-time satellite orbit tracking on a 3D globe).
 >
@@ -68,7 +68,7 @@
 ## MONOREPO STRUCTURE
 
 ```
-rocketpedia/
+orbica/
 ├── services/
 │   ├── api/          # Go — REST + GraphQL API
 │   ├── pipeline/     # Python — data ingestion + orbital math
@@ -529,7 +529,7 @@ JWT_SECRET=
 NEXT_PUBLIC_API_URL=http://localhost:8080
 NEXT_PUBLIC_TRACKER_WS_URL=ws://localhost:8081
 
-AWS_S3_BUCKET=rocketpedia-media
+AWS_S3_BUCKET=orbica-media
 AWS_CLOUDFRONT_URL=
 ```
 
@@ -538,8 +538,8 @@ AWS_CLOUDFRONT_URL=
 ## DAY 1 COMMANDS
 
 ```bash
-git clone https://github.com/yourname/rocketpedia
-cd rocketpedia
+git clone https://github.com/yourname/orbica
+cd orbica
 
 docker-compose up -d
 

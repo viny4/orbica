@@ -23,7 +23,7 @@ log = logging.getLogger("satcat")
 class SatcatClient:
     def __init__(self) -> None:
         self._c = httpx.Client(
-            headers={"User-Agent": "rocketpedia/0.1"},
+            headers={"User-Agent": "orbica/0.1"},
             timeout=settings.request_timeout_s,
             follow_redirects=True,
         )

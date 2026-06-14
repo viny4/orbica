@@ -1,4 +1,4 @@
--- ROCKETPEDIA — enrichment: richer satellite metadata, launch-site reference,
+-- ORBICA — enrichment: richer satellite metadata, launch-site reference,
 -- real news articles, and the indexes that keep all of it fast at scale.
 
 -- ── Satellite metadata from SATCAT ──────────────────────────────────────────

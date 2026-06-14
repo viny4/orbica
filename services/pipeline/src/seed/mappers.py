@@ -1,4 +1,4 @@
-"""Map Launch Library 2 JSON payloads onto Rocketpedia DB rows.
+"""Map Launch Library 2 JSON payloads onto Orbica DB rows.
 
 Defensive by design: LL2 nests data deeply and fields come and go between
 records, so every accessor tolerates missing/None values.

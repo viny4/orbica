@@ -15,7 +15,7 @@ class SnapiClient:
 
     def __init__(self) -> None:
         self._c = httpx.Client(
-            headers={"User-Agent": "rocketpedia/0.1"}, timeout=30.0, follow_redirects=True
+            headers={"User-Agent": "orbica/0.1"}, timeout=30.0, follow_redirects=True
         )
 
     def close(self) -> None:

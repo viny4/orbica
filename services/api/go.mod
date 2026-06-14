@@ -1,4 +1,4 @@
-module github.com/rocketpedia/api
+module github.com/orbica/api
 
 go 1.22
 

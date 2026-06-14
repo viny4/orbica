@@ -1,4 +1,4 @@
--- ROCKETPEDIA — core relational schema
+-- ORBICA — core relational schema
 -- Agencies → rocket families → rocket vehicles → launch sites → launch events → satellites.
 
 CREATE TABLE IF NOT EXISTS agencies (

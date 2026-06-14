@@ -1,4 +1,4 @@
--- ROCKETPEDIA — decode SATCAT owner/source codes (CIS, PRC, ITSO, GLOB…) into
+-- ORBICA — decode SATCAT owner/source codes (CIS, PRC, ITSO, GLOB…) into
 -- real operator/country names + a country flag code. Satellites carry these
 -- cryptic codes; this makes the "Owner" meaningful and flaggable.
 

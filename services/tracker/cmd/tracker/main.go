@@ -1,4 +1,4 @@
-// Rocketpedia live satellite tracker — propagates TLEs and streams positions
+// Orbica live satellite tracker — propagates TLEs and streams positions
 // to subscribed WebSocket clients.
 package main
 
@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/rocketpedia/tracker/internal/hub"
-	"github.com/rocketpedia/tracker/internal/ws"
+	"github.com/orbica/tracker/internal/hub"
+	"github.com/orbica/tracker/internal/ws"
 )
 
 func main() {
@@ -42,11 +42,11 @@ func main() {
 	mux.HandleFunc("/ws", ws.Handler(h))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","service":"rocketpedia-tracker"}`))
+		_, _ = w.Write([]byte(`{"status":"ok","service":"orbica-tracker"}`))
 	})
 
 	addr := ":" + port
-	log.Printf("rocketpedia-tracker listening on %s (ws at /ws)", addr)
+	log.Printf("orbica-tracker listening on %s (ws at /ws)", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
 		log.Fatalf("listen: %v", err)
 	}

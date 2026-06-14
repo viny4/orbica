@@ -1,4 +1,4 @@
--- ROCKETPEDIA — encyclopedic enrichment for satellites: a real description,
+-- ORBICA — encyclopedic enrichment for satellites: a real description,
 -- a real photo, and a source link (Wikipedia), plus the fields a "what happened
 -- to it" legacy section needs (decay date + lifetime are already present).
 
