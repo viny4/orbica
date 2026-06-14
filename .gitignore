@@ -1,0 +1,43 @@
+# Env
+.env
+.env.local
+*.local
+
+# Go
+/services/api/bin/
+/services/tracker/bin/
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+web/.next/
+web/out/
+web/.turbo/
+npm-debug.log*
+
+# Data / build artifacts
+data/seeds/*.cache.json
+data/seeds/.launch_backfill_offset
+*.log
+.DS_Store
+
+# Compiled Go binaries
+/services/api/rp-api
+/services/tracker/rp-tracker
+
+# Editor
+.idea/
+.vscode/
+
+# Claude Code runtime state (keep settings.json, drop locks)
+.claude/*.lock
