@@ -38,3 +38,6 @@ data/seeds/.launch_backfill_offset
 # Editor
 .idea/
 .vscode/
+
+# Vercel / Cloudflare
+web/.vercel/

@@ -3,6 +3,8 @@ import { api } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
 import { PageHeader, Chip, Outcome } from "@/components/ui";
 
+export const runtime = "edge";
+
 type Launch = Record<string, any>;
 
 function fmtDateTime(d?: string | null) {

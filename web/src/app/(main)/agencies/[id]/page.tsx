@@ -6,6 +6,8 @@ import { AgencyLogo } from "@/components/AgencyLogo";
 import { Outcome } from "@/components/ui";
 import { country } from "@/lib/flags";
 
+export const runtime = "edge";
+
 type Agency = Record<string, any>;
 
 const fmtDate = (s?: string) =>

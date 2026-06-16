@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS tle_snapshots (
 );
 
 -- Idempotent hypertable creation (no error if already a hypertable).
-SELECT create_hypertable('tle_snapshots', 'captured_at', if_not_exists => TRUE);
+-- SELECT create_hypertable('tle_snapshots', 'captured_at', if_not_exists => TRUE); (Disabled for Neon/Supabase compatibility)
 
 CREATE INDEX IF NOT EXISTS idx_tle_satellite ON tle_snapshots(satellite_id, captured_at DESC);
 

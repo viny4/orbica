@@ -5,11 +5,13 @@ import { safe } from "@/components/EmptyState";
 import { PageHeader, Chip } from "@/components/ui";
 import { News } from "@/components/News";
 
+export const runtime = "edge";
+
 // Visual (real photo + interactive 3D) is client-only — never SSR it.
 const RocketVisual = dynamic(() => import("@/components/rockets/RocketVisual"), {
   ssr: false,
   loading: () => (
-    <div className="w-full aspect-square border border-white/10 bg-white/[0.015] grid place-items-center text-white/40 text-sm">
+    <div className="w-full aspect-square border border-white/10 bg-white/[0.015] grid place-items-center text-white/45 text-sm">
       Loading…
     </div>
   ),

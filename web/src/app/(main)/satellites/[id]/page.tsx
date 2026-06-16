@@ -6,6 +6,8 @@ import { PageHeader, Chip } from "@/components/ui";
 import { News } from "@/components/News";
 import { Flag } from "@/components/Flag";
 
+export const runtime = "edge";
+
 const SatelliteVisual = dynamic(() => import("@/components/satellites/SatelliteVisual"), {
   ssr: false,
   loading: () => (

@@ -3,6 +3,8 @@ import { safe } from "@/components/EmptyState";
 import { PageHeader } from "@/components/ui";
 import LaunchFeed from "@/components/timeline/LaunchFeed";
 
+export const runtime = "edge";
+
 export default async function YearPage({ params }: { params: { year: string } }) {
   const year = Number(params.year);
   // Total comes from the cached year rollup — the list itself streams in.
