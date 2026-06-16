@@ -1,0 +1,31 @@
+name: Orbica Data Sync
+
+on:
+  schedule:
+    - cron: '0 */4 * * *' # Runs every 4 hours
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  sync:
+    name: Sync Space Data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: services/pipeline/requirements.txt
+
+      - name: Install Dependencies
+        run: |
+          pip install -r services/pipeline/requirements.txt
+
+      - name: Run Sync Script
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+        run: |
+          python -m services.pipeline.src.sync.refresh
