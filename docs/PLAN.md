@@ -416,7 +416,7 @@ type YearSummary {
 
 ---
 
-## BUILD PHASES (give these to Claude Code in order)
+## BUILD PHASES
 
 ### Phase 0 — Foundation (Days 1-5)
 - [ ] Init monorepo (Go modules in services/api and services/tracker, Python venv in services/pipeline, Next.js in web/)
@@ -587,7 +587,7 @@ open http://localhost:3000
 
 ---
 
-## BUILD ORDER SUMMARY FOR CLAUDE CODE
+## BUILD ORDER SUMMARY
 
 1. Phase 0 -> infra + schema
 2. Phase 1 -> seed real data (this is the foundation everything depends on)

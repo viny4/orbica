@@ -80,6 +80,9 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
             stages: rocket.stages,
             thrust_kn: rocket.thrust_kn,
             reusable: rocket.reusable,
+            engineCount: engines
+              .filter((e) => e.stage === 1)
+              .reduce((n, e) => n + (Number(e.engine_count) || 0), 0),
           }}
         />
 

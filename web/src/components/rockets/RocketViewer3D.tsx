@@ -3,40 +3,72 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import { useMemo, useState, Suspense } from "react";
+import * as THREE from "three";
 import { deriveConfig, type RocketSpec, type RocketConfig } from "./rocketConfig";
 import { useInView } from "@/components/three/useInView";
 
 export type { RocketSpec };
 
+// A tangent-ogive payload-fairing silhouette (revolved as a lathe): a short
+// cylindrical base, then a smooth convex curve to a softly-rounded tip — what a
+// real fairing looks like, not the sharpened-pencil cone we had before.
+function ogiveProfile(r: number, h: number): THREE.Vector2[] {
+  const steps = 32;
+  const cyl = 0.22; // straight cylindrical fraction at the base
+  const L = h * (1 - cyl); // length of the curved ogive section
+  const rho = (r * r + L * L) / (2 * r); // ogive radius (tangent at the base)
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    const yy = f * h;
+    let x: number;
+    if (f <= cyl) {
+      x = r;
+    } else {
+      // t = distance up from the base of the ogive (0 → radius r, L → tip ~0).
+      const t = ((f - cyl) / (1 - cyl)) * L;
+      x = Math.sqrt(Math.max(0, rho * rho - t * t)) - (rho - r);
+    }
+    pts.push(new THREE.Vector2(Math.max(0.012, x), yy));
+  }
+  return pts;
+}
+
+// A blunt rounded capsule/escape-tower silhouette for crewed vehicles.
+function capsuleProfile(r: number, h: number): THREE.Vector2[] {
+  const steps = 24;
+  const pts: THREE.Vector2[] = [];
+  for (let i = 0; i <= steps; i++) {
+    const f = i / steps;
+    // Quarter-ellipse: wide blunt base curving to a rounded dome.
+    const x = r * 0.92 * Math.cos((f * Math.PI) / 2 * 0.88);
+    pts.push(new THREE.Vector2(Math.max(0.02, x), f * h));
+  }
+  return pts;
+}
+
 // A nose cone or payload fairing, shaped by type.
 function Nose({ cfg, y }: { cfg: RocketConfig; y: number }) {
   const r = cfg.diameter / 2;
-  if (cfg.fairing === "capsule") {
-    // Blunt conic capsule (crewed).
-    return (
-      <group position={[0, y, 0]}>
-        <mesh position={[0, cfg.height * 0.04, 0]}>
-          <coneGeometry args={[r * 0.85, cfg.height * 0.09, 32]} />
-          <meshStandardMaterial color={cfg.palette.upper} metalness={0.4} roughness={0.5} />
-        </mesh>
-        <mesh position={[0, cfg.height * 0.11, 0]}>
-          <cylinderGeometry args={[r * 0.35, r * 0.85, cfg.height * 0.05, 32]} />
-          <meshStandardMaterial color="#2a2f3a" metalness={0.6} roughness={0.4} />
-        </mesh>
-      </group>
-    );
-  }
-  // Ogive payload fairing (bulbous, then pointed).
+  const capsule = cfg.fairing === "capsule";
+  const h = cfg.height * (capsule ? 0.12 : 0.17);
+  const profile = useMemo(
+    () => (capsule ? capsuleProfile(r, h) : ogiveProfile(r, h)),
+    [capsule, r, h],
+  );
   return (
     <group position={[0, y, 0]}>
-      <mesh position={[0, cfg.height * 0.05, 0]}>
-        <cylinderGeometry args={[r * 0.55, r, cfg.height * 0.1, 32]} />
+      <mesh castShadow>
+        <latheGeometry args={[profile, 56]} />
         <meshStandardMaterial color={cfg.palette.upper} metalness={0.2} roughness={0.5} />
       </mesh>
-      <mesh position={[0, cfg.height * 0.13, 0]}>
-        <coneGeometry args={[r * 0.55, cfg.height * 0.07, 32]} />
-        <meshStandardMaterial color={cfg.palette.upper} metalness={0.2} roughness={0.5} />
-      </mesh>
+      {/* crewed: slender launch-escape-tower spike on top of the capsule */}
+      {capsule && (
+        <mesh position={[0, h * 1.02 + cfg.height * 0.04, 0]}>
+          <coneGeometry args={[r * 0.05, cfg.height * 0.08, 16]} />
+          <meshStandardMaterial color="#2a2f3a" metalness={0.5} roughness={0.5} />
+        </mesh>
+      )}
     </group>
   );
 }

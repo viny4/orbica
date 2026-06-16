@@ -149,6 +149,8 @@ def pad_row(pad: dict[str, Any], operator_id: str | None) -> dict[str, Any]:
         # not the old location.country_code string (which is now always null).
         "country_code": _country_alpha3(pad.get("location") or {}),
         "location": location,
+        # The launch-complex description lives on the pad or its location.
+        "description": pad.get("description") or g(pad, "location", "description"),
         "active": bool(pad.get("active", True)),
         "ll2_id": pad.get("id"),
     }

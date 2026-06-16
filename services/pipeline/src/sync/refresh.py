@@ -55,8 +55,10 @@ def main() -> int:
     for group in ("starlink", "gps-ops", "galileo", "oneweb"):
         _step(f"tle-{group}", satellites_seed.seed_group, group)
 
-    # Tie new satellites back to their launch, refresh news, rebuild summary.
+    # Tie new satellites back to their launch, fill constellation specs, refresh
+    # news, rebuild summary.
     _step("link-satellites", satellites_seed.link_satellites_to_launches)
+    _step("constellation-specs", satellites_seed.derive_constellation_specs)
     critical_ok &= _step("news", articles.ingest)
     _step("year-summary", refresh_year_summary)
 

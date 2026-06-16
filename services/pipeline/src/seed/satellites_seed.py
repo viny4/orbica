@@ -91,6 +91,45 @@ def link_satellites_to_launches() -> int:
         return cur.rowcount
 
 
+# Published per-satellite spec by constellation — operator, a typical mass (kg)
+# and approximate bus dimensions. Used to fill rows the catalogue (CelesTrak)
+# can't, so the ever-growing Starlink/OneWeb fleets stay populated on every sync.
+_CONSTELLATION_SPECS = {
+    "Starlink": ("SpaceX", 295, "~2.8 × 1.4 m bus"),
+    "OneWeb": ("OneWeb", 150, "~1.0 × 1.0 × 1.3 m"),
+    "Iridium": ("Iridium Communications", 860, "~3.1 × 2.4 × 1.5 m"),
+    "Globalstar": ("Globalstar", 700, "~1.9 × 1.8 m"),
+    "GPS": ("U.S. Space Force", 2000, "~2.5 × 2.0 × 2.0 m"),
+    "Galileo": ("European Union (EUSPA)", 700, "~2.7 × 1.2 × 1.1 m"),
+    "Beidou": ("China (CNSA)", 1000, "~2.2 × 1.8 × 1.5 m"),
+    "OrbComm": ("ORBCOMM", 172, "~1.1 m hexagonal"),
+    "Kuiper": ("Amazon (Project Kuiper)", 500, "~3.0 m class"),
+}
+
+
+def derive_constellation_specs() -> int:
+    """Fill operator_name + mass + dimensions for constellation members the
+    catalogue omits. Only touches NULLs, so curated/UCS values always win.
+    Idempotent."""
+    total = 0
+    with cursor() as cur:
+        for name, (operator, mass, dims) in _CONSTELLATION_SPECS.items():
+            cur.execute(
+                """
+                UPDATE satellites SET
+                  operator_name = COALESCE(NULLIF(operator_name, ''), %s),
+                  mass_kg       = COALESCE(mass_kg, %s),
+                  dimensions    = COALESCE(NULLIF(dimensions, ''), %s)
+                WHERE constellation = %s
+                  AND (operator_name IS NULL OR operator_name = ''
+                       OR mass_kg IS NULL OR dimensions IS NULL OR dimensions = '')
+                """,
+                (operator, mass, dims, name),
+            )
+            total += cur.rowcount
+    return total
+
+
 def main() -> None:
     group = sys.argv[1] if len(sys.argv) > 1 else "active"
     seed_group(group)

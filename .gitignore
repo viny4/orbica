@@ -38,6 +38,3 @@ data/seeds/.launch_backfill_offset
 # Editor
 .idea/
 .vscode/
-
-# Claude Code runtime state (keep settings.json, drop locks)
-.claude/*.lock
