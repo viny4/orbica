@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { getLaunchTitle } from "@/lib/api";
 
 interface LaunchRow {
   id: string;
@@ -89,7 +90,7 @@ export default function LaunchFeed({ year }: { year: number }) {
           >
             <div className="min-w-0">
               <div className="font-light text-lg truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
-                {l.mission_name || l.name}
+                {getLaunchTitle(l.mission_name, l.name, l.rocket_name)}
               </div>
               <div className="text-[13px] text-white/45 truncate mt-0.5">
                 {l.rocket_name || "Unknown rocket"}

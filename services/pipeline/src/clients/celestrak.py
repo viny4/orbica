@@ -34,7 +34,7 @@ class CelesTrakClient:
     def __init__(self, base_url: str | None = None) -> None:
         self.base_url = (base_url or settings.celestrak_base_url).rstrip("/")
         self._client = httpx.Client(
-            headers={"User-Agent": "orbica/0.1"},
+            headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"},
             timeout=settings.request_timeout_s,
             follow_redirects=True,
         )

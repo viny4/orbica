@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, getLaunchTitle } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
 import { Flag } from "@/components/Flag";
 import { AgencyLogo } from "@/components/AgencyLogo";
@@ -115,7 +115,7 @@ export default async function AgencyDetailPage({ params }: { params: { id: strin
                   className="group flex items-center justify-between gap-4 py-3.5 hover:bg-white/[0.02] transition-colors -mx-2 px-2">
                   <div className="min-w-0">
                     <div className="font-light truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
-                      {l.mission_name || l.name}
+                      {getLaunchTitle(l.mission_name, l.name, l.rocket_name)}
                     </div>
                     <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-0.5 truncate">
                       {l.rocket_name ?? "—"}

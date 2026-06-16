@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, getLaunchTitle } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
 import { PageHeader, Chip, Outcome } from "@/components/ui";
 
@@ -27,12 +27,15 @@ export default async function LaunchDetailPage({ params }: { params: { id: strin
   const payloads: any[] = Array.isArray(launch.payloads) ? launch.payloads : [];
   const year = launch.launch_year as number | null;
 
+  const cleanedTitle = getLaunchTitle(launch.mission_name, launch.name, rocket?.name);
+  const isUnknown = !launch.mission_name || launch.mission_name.toLowerCase().includes("unknown payload") || launch.mission_name.toLowerCase() === "unknown";
+
   const overview: [string, React.ReactNode][] = [
     ["Date / time", fmtDateTime(launch.launch_time)],
     ["Outcome", <Outcome key="o" outcome={launch.outcome} />],
     ["Launch site", site?.name],
-    ["Mission", launch.mission_name],
-    ["Mission type", launch.mission_type],
+    ["Mission", isUnknown ? "Classified" : launch.mission_name],
+    ["Mission type", isUnknown ? "Classified" : launch.mission_type],
     ["Orbit achieved", launch.orbit_achieved],
   ];
 
@@ -40,12 +43,12 @@ export default async function LaunchDetailPage({ params }: { params: { id: strin
     <div>
       <PageHeader
         eyebrow={[year, agency?.name].filter(Boolean).join(" · ") || "Launch"}
-        title={launch.mission_name || launch.name}
+        title={cleanedTitle}
         back={year ? { href: `/timeline/${year}`, label: `${year}` } : { href: "/timeline", label: "Timeline" }}
         meta={
           <span className="flex flex-wrap items-center gap-2">
             <Chip>{launch.outcome?.replace("_", " ") ?? "unknown"}</Chip>
-            {launch.name !== launch.mission_name && <span className="text-white/45">{launch.name}</span>}
+            {!isUnknown && launch.name !== launch.mission_name && <span className="text-white/45">{launch.name}</span>}
           </span>
         }
       />

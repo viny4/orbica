@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui";
+import { getLaunchTitle } from "@/lib/api";
 
 interface Upcoming {
   id: string;
@@ -82,7 +83,7 @@ export default function UpcomingPage() {
               >
                 <div className="min-w-0">
                   <div className="font-light text-lg truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
-                    {l.mission_name || l.name}
+                    {getLaunchTitle(l.mission_name, l.name, l.rocket_name)}
                   </div>
                   <div className="text-[13px] text-white/45 truncate mt-0.5">
                     {l.rocket_name || "Unknown rocket"}

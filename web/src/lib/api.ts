@@ -112,3 +112,29 @@ export const api = {
     get<Satellite[]>(`/satellites${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   satellite: (id: string) => get<Record<string, unknown>>(`/satellites/${id}`),
 };
+
+export function getLaunchTitle(
+  missionName: string | null | undefined,
+  launchName: string,
+  rocketName: string | null | undefined
+): string {
+  const mName = missionName?.trim() || "";
+  const isUnknown =
+    !mName ||
+    mName.toLowerCase() === "unknown payload" ||
+    mName.toLowerCase().includes("kosmos (unknown payload)") ||
+    mName.toLowerCase().includes("unknown payload") ||
+    mName.toLowerCase() === "unknown";
+
+  if (isUnknown) {
+    if (rocketName) {
+      return `${rocketName} Launch`;
+    }
+    const cleanedLaunchName = launchName
+      .replace(/\s*\|\s*Unknown Payload/i, "")
+      .replace(/\s*\|\s*Kosmos \(Unknown Payload\)/i, "");
+    return cleanedLaunchName || "Classified Launch";
+  }
+
+  return mName;
+}
