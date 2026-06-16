@@ -27,5 +27,6 @@ jobs:
       - name: Run Sync Script
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+        working-directory: services/pipeline
         run: |
-          python -m services.pipeline.src.sync.refresh
+          python -m src.sync.refresh

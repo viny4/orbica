@@ -31,15 +31,56 @@ CONSTELLATION = {
 def seed_group(group: str = "active") -> None:
     constellation = CONSTELLATION.get(group)
     captured = datetime.now(timezone.utc)
-    n = 0
+    
     with CelesTrakClient() as client:
-        for tle in client.group(group):
-            sat_id = _upsert_satellite(tle, constellation)
-            _insert_tle(sat_id, tle, captured)
-            n += 1
-            if n % 1000 == 0:
-                log.info("  ...%d satellites", n)
-    log.info("group %s: %d satellites + TLEs upserted", group, n)
+        tles = list(client.group(group))
+        
+    log.info("fetched %d TLEs for group %s. Bulk upserting satellites...", len(tles), group)
+    
+    if not tles:
+        return
+        
+    sat_rows = [
+        (tle.name, tle.norad_id, constellation, "active")
+        for tle in tles
+    ]
+    
+    with cursor() as cur:
+        cur.executemany(
+            """
+            INSERT INTO satellites (name, norad_id, constellation, status)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (norad_id) DO UPDATE SET
+              name = EXCLUDED.name,
+              constellation = EXCLUDED.constellation,
+              status = EXCLUDED.status
+            """,
+            sat_rows
+        )
+        
+        norad_ids = [tle.norad_id for tle in tles]
+        cur.execute(
+            "SELECT id, norad_id FROM satellites WHERE norad_id = ANY(%s)",
+            [norad_ids]
+        )
+        id_map = {row["norad_id"]: str(row["id"]) for row in cur.fetchall()}
+        
+        tle_rows = [
+            (id_map[tle.norad_id], captured, tle.line1, tle.line2, "celestrak")
+            for tle in tles
+            if tle.norad_id in id_map
+        ]
+        
+        log.info("bulk inserting %d TLE snapshots...", len(tle_rows))
+        cur.executemany(
+            """
+            INSERT INTO tle_snapshots (satellite_id, captured_at, tle_line1, tle_line2, source)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            tle_rows
+        )
+        
+    log.info("group %s: %d satellites + TLEs upserted", group, len(tles))
 
 
 def _upsert_satellite(tle: TLE, constellation: str | None) -> str:
