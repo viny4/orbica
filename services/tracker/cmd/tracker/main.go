@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -40,9 +41,20 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", ws.Handler(h))
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok","service":"orbica-tracker"}`))
+		dbErr := pool.Ping(r.Context())
+		dbStatus := "ok"
+		if dbErr != nil {
+			dbStatus = dbErr.Error()
+		}
+		res := map[string]interface{}{
+			"status":       "ok",
+			"service":      "orbica-tracker",
+			"catalog_size": h.CatalogSize(),
+			"db_status":    dbStatus,
+		}
+		_ = json.NewEncoder(w).Encode(res)
 	})
 
 	addr := ":" + port
