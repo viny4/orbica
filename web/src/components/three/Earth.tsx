@@ -6,6 +6,23 @@ import * as THREE from "three";
 import { EARTH_R, EARTH_ROTATION_Y } from "./geo";
 
 // Textured, slowly-rotating Earth. Textures live in /public/textures.
+const AtmosphereShader = {
+  vertexShader: `
+    varying vec3 vNormal;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    varying vec3 vNormal;
+    void main() {
+      float intensity = pow(0.7 - dot(vNormal, vec3(0, 0, 1.0)), 2.5);
+      gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
+    }
+  `
+};
+
 export function Earth({ spin = true }: { spin?: boolean }) {
   const ref = useRef<THREE.Mesh>(null);
   const [day, normal, specular] = useLoader(THREE.TextureLoader, [
@@ -30,10 +47,23 @@ export function Earth({ spin = true }: { spin?: boolean }) {
           shininess={12}
         />
       </mesh>
-      {/* Thin atmosphere halo */}
-      <mesh scale={1.015}>
+      
+      {/* High-tech tactical grid wireframe */}
+      <mesh scale={1.002}>
+        <sphereGeometry args={[EARTH_R, 36, 36]} />
+        <meshBasicMaterial color="#4f75ff" wireframe transparent opacity={0.06} />
+      </mesh>
+
+      {/* Upgraded atmosphere glow */}
+      <mesh scale={1.12}>
         <sphereGeometry args={[EARTH_R, 48, 48]} />
-        <meshBasicMaterial color="#4a82ff" transparent opacity={0.08} side={THREE.BackSide} />
+        <shaderMaterial
+          vertexShader={AtmosphereShader.vertexShader}
+          fragmentShader={AtmosphereShader.fragmentShader}
+          blending={THREE.AdditiveBlending}
+          side={THREE.BackSide}
+          transparent
+        />
       </mesh>
     </group>
   );

@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { Earth } from "@/components/three/Earth";
 import { latLngAltToVec3, orbitPath, propagateTLE, type GeoPos } from "@/components/three/geo";
 import { useInView } from "@/components/three/useInView";
+import { Footprint } from "@/components/three/Footprint";
 
 interface LivePos {
   norad_id: number;
@@ -125,60 +126,147 @@ function sunDirection(now: Date): [number, number, number] {
 }
 
 // ── cloud ────────────────────────────────────────────────────────────────────
-const dummy = new THREE.Object3D();
 function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
   positions: LivePos[]; meta: Map<number, Meta>; mode: ColorMode; filter: string | null; dim: boolean;
   onPick: (p: LivePos) => void;
 }) {
-  const ref = useRef<THREE.InstancedMesh>(null);
+  const ref = useRef<THREE.Points>(null);
   const shown = useMemo(
     () => (filter ? positions.filter((p) => categoryOf(mode, p, meta.get(p.norad_id)) === filter) : positions),
     [positions, filter, mode, meta],
   );
   const shownRef = useRef(shown);
   shownRef.current = shown;
-  useEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const col = new THREE.Color();
+
+  const [posAttr, colAttr] = useMemo(() => {
+    const posArr = new Float32Array(shown.length * 3);
+    const colArr = new Float32Array(shown.length * 3);
+    const colorObj = new THREE.Color();
+
     shown.forEach((p, i) => {
       const [x, y, z] = latLngAltToVec3(p.lat, p.lng, p.altitude_km);
-      dummy.position.set(x, y, z);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-      col.set(colorFor(mode, p, meta.get(p.norad_id)));
-      if (dim) col.multiplyScalar(0.45);
-      mesh.setColorAt(i, col);
+      posArr[i * 3] = x;
+      posArr[i * 3 + 1] = y;
+      posArr[i * 3 + 2] = z;
+
+      const cStr = colorFor(mode, p, meta.get(p.norad_id));
+      colorObj.set(cStr);
+      if (dim) {
+        colorObj.multiplyScalar(0.05); // Barely visible background glow when tracking a specific satellite
+      } else {
+        colorObj.multiplyScalar(0.45); // Softened default brightness to reduce clutter
+      }
+      colArr[i * 3] = colorObj.r;
+      colArr[i * 3 + 1] = colorObj.g;
+      colArr[i * 3 + 2] = colorObj.b;
     });
-    mesh.count = shown.length;
-    mesh.instanceMatrix.needsUpdate = true;
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+    return [posArr, colArr];
   }, [shown, mode, meta, dim]);
+
+  useEffect(() => {
+    const points = ref.current;
+    if (!points) return;
+
+    const geom = points.geometry;
+    geom.setAttribute("position", new THREE.BufferAttribute(posAttr, 3));
+    geom.setAttribute("color", new THREE.BufferAttribute(colAttr, 3));
+    geom.attributes.position.needsUpdate = true;
+    geom.attributes.color.needsUpdate = true;
+    geom.computeBoundingSphere();
+  }, [posAttr, colAttr]);
+
+  const sprite = useMemo(() => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      const grad = ctx.createRadialGradient(8, 8, 0, 8, 8, 8);
+      grad.addColorStop(0, "rgba(255, 255, 255, 1)");
+      grad.addColorStop(0.3, "rgba(255, 255, 255, 0.7)");
+      grad.addColorStop(1, "rgba(255, 255, 255, 0)");
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 16, 16);
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }, []);
+
   return (
-    <instancedMesh
+    <points
       ref={ref}
-      args={[undefined, undefined, Math.max(1, positions.length)]}
-      onClick={(e) => { e.stopPropagation(); const id = e.instanceId; if (id != null && shownRef.current[id]) onPick(shownRef.current[id]); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        const id = e.index;
+        if (id != null && shownRef.current[id]) onPick(shownRef.current[id]);
+      }}
     >
-      <sphereGeometry args={[0.012, 6, 6]} />
-      <meshBasicMaterial vertexColors toneMapped={false} />
-    </instancedMesh>
+      <bufferGeometry />
+      <pointsMaterial
+        size={0.022}
+        map={sprite}
+        transparent
+        depthWrite={false}
+        vertexColors
+        blending={THREE.AdditiveBlending}
+        sizeAttenuation={true}
+      />
+    </points>
   );
 }
 
 // Orbit path + glowing marker for the tracked satellite, propagated client-side.
-function TrackedSatellite({ line1, line2, offsetMin, onTelemetry }: {
-  line1: string; line2: string; offsetMin: number; onTelemetry: (p: GeoPos) => void;
+function TrackedSatellite({ norad, line1, line2, offsetMin, onTelemetry }: {
+  norad: number; line1: string; line2: string; offsetMin: number; onTelemetry: (p: GeoPos) => void;
 }) {
   const marker = useRef<THREE.Mesh>(null);
   const glow = useRef<THREE.Mesh>(null);
   const acc = useRef(99);
   const orbit = useMemo(() => orbitPath(line1, line2, 240), [line1, line2]);
+
+  const [issPos, setIssPos] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (norad !== 25544) return;
+
+    const fetchISS = () => {
+      fetch("https://api.open-notify.org/iss-now.json")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.message === "success" && data.iss_position) {
+            const lat = parseFloat(data.iss_position.latitude);
+            const lng = parseFloat(data.iss_position.longitude);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              setIssPos({ lat, lng });
+            }
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchISS();
+    const timer = setInterval(fetchISS, 3000);
+    return () => clearInterval(timer);
+  }, [norad]);
+
   useFrame((_, delta) => {
     acc.current += delta;
     if (acc.current < 0.25) return;
     acc.current = 0;
-    const p = propagateTLE(line1, line2, new Date(Date.now() + offsetMin * 60000));
+
+    let p: GeoPos | null = null;
+    if (norad === 25544 && issPos) {
+      p = {
+        lat: issPos.lat,
+        lng: issPos.lng,
+        altKm: 420.0,
+        speedKmS: 7.66,
+      };
+    } else {
+      p = propagateTLE(line1, line2, new Date(Date.now() + offsetMin * 60000));
+    }
+
     if (p && marker.current) {
       const v = latLngAltToVec3(p.lat, p.lng, p.altKm);
       marker.current.position.set(v[0], v[1], v[2]);
@@ -315,14 +403,27 @@ export default function GlobalTracker() {
       {/* globe — first on mobile (the main view), sidebar drops below it */}
       <div ref={ref} className="order-1 lg:order-2 relative h-[70vh] lg:h-[82vh] overflow-hidden border border-white/10 bg-black">
         {armed && (
-          <Canvas camera={{ position: [0, 2, 7], fov: 45 }} dpr={[1, 2]} frameloop={inView ? "always" : "never"}>
+          <Canvas
+            camera={{ position: [0, 2, 7], fov: 45 }}
+            dpr={[1, 2]}
+            frameloop={inView ? "always" : "never"}
+            raycaster={{ params: { Points: { threshold: 0.08 } } } as any}
+          >
             <ambientLight intensity={0.16} />
             <directionalLight position={sun} intensity={2} />
             <Suspense fallback={<Html center>Loading globe…</Html>}>
               <Stars radius={90} depth={50} count={4000} factor={4} fade />
               <Earth spin={false} />
               <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} onPick={(p) => track(p.norad_id)} />
-              {tracked && <TrackedSatellite line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} onTelemetry={setTelemetry} />}
+              {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} onTelemetry={setTelemetry} />}
+              {tracked && telemetry && (
+                <Footprint
+                  lat={telemetry.lat}
+                  lng={telemetry.lng}
+                  altKm={telemetry.altKm}
+                  color="#7df9ff"
+                />
+              )}
             </Suspense>
             <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked} autoRotateSpeed={0.18} />
           </Canvas>

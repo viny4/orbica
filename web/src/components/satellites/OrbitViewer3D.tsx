@@ -7,6 +7,7 @@ import * as THREE from "three";
 import { Earth } from "@/components/three/Earth";
 import { latLngAltToVec3, orbitPath, propagateTLE, type GeoPos } from "@/components/three/geo";
 import { useInView } from "@/components/three/useInView";
+import { Footprint } from "@/components/three/Footprint";
 
 interface Props {
   name: string;
@@ -72,6 +73,14 @@ export default function OrbitViewer3D({ name, line1, line2 }: Props) {
             <Earth spin={false} />
             <OrbitLine line1={line1} line2={line2} />
             <SatelliteMarker name={name} line1={line1} line2={line2} onPos={setPos} />
+            {pos && (
+              <Footprint
+                lat={pos.lat}
+                lng={pos.lng}
+                altKm={pos.altKm}
+                color="#7df9ff"
+              />
+            )}
           </Suspense>
           <OrbitControls enablePan={false} minDistance={3} maxDistance={14} autoRotate autoRotateSpeed={0.3} />
         </Canvas>
