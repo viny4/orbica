@@ -156,6 +156,16 @@ def pad_row(pad: dict[str, Any], operator_id: str | None) -> dict[str, Any]:
     }
 
 
+def _first_url(urls: list[dict] | None) -> str | None:
+    if not urls or not isinstance(urls, list):
+        return None
+    for u in sorted(urls, key=lambda x: x.get("priority", 0), reverse=True):
+        url = u.get("url")
+        if url:
+            return url
+    return None
+
+
 def launch_row(
     launch: dict[str, Any],
     rocket_id: str | None,
@@ -181,6 +191,8 @@ def launch_row(
         "mission_description": g(launch, "mission", "description"),
         "mission_type": g(launch, "mission", "type"),
         "orbit_achieved": g(launch, "mission", "orbit", "name"),
+        "video_url": _first_url(launch.get("vid_urls")),
+        "article_url": _first_url(launch.get("info_urls")),
         # Launch ids are UUID strings in LL2 → stored in ll2_uuid (see 03_adjustments.sql).
         "ll2_uuid": launch.get("id"),
     }
