@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,7 +16,7 @@ import (
 )
 
 func main() {
-	dsn := env("POSTGRES_URL", "postgresql://rocketpedia:rocketpedia@localhost:5432/rocketpedia")
+	dsn := env("POSTGRES_URL", env("POSTGRESS_URL", "postgresql://rocketpedia:rocketpedia@localhost:5432/rocketpedia"))
 	port := env("TRACKER_PORT", "8081")
 
 	ctx := context.Background()
@@ -49,17 +48,11 @@ func main() {
 		if dbErr != nil {
 			dbStatus = dbErr.Error()
 		}
-		var envKeys []string
-		for _, e := range os.Environ() {
-			pair := strings.SplitN(e, "=", 2)
-			envKeys = append(envKeys, pair[0])
-		}
 		res := map[string]interface{}{
 			"status":       "ok",
 			"service":      "orbica-tracker",
 			"catalog_size": h.CatalogSize(),
 			"db_status":    dbStatus,
-			"env_keys":     envKeys,
 		}
 		_ = json.NewEncoder(w).Encode(res)
 	})
