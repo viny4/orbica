@@ -15,6 +15,13 @@ function fmtDateTime(d?: string | null) {
   });
 }
 
+function getYouTubeEmbedUrl(url?: string | null): string | null {
+  if (!url) return null;
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2].length === 11) ? `https://www.youtube.com/embed/${match[2]}` : null;
+}
+
 export default async function LaunchDetailPage({ params }: { params: { id: string } }) {
   const launch = (await safe<Launch | null>(api.launch(params.id), null)) as Launch | null;
   if (!launch) {
@@ -29,6 +36,7 @@ export default async function LaunchDetailPage({ params }: { params: { id: strin
 
   const cleanedTitle = getLaunchTitle(launch.mission_name, launch.name, rocket?.name);
   const isUnknown = !launch.mission_name || launch.mission_name.toLowerCase().includes("unknown payload") || launch.mission_name.toLowerCase() === "unknown";
+  const embedUrl = getYouTubeEmbedUrl(launch.video_url);
 
   const overview: [string, React.ReactNode][] = [
     ["Date / time", fmtDateTime(launch.launch_time)],
@@ -119,6 +127,23 @@ export default async function LaunchDetailPage({ params }: { params: { id: strin
           )}
         </div>
       </div>
+
+      {embedUrl && (
+        <section className="mt-12">
+          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5 border-b border-white/10 pb-3">
+            Webcast Broadcast
+          </h2>
+          <div className="aspect-video w-full border border-white/10 bg-black max-w-4xl mx-auto rounded-lg overflow-hidden">
+            <iframe
+              src={embedUrl}
+              title="Launch Webcast"
+              className="w-full h-full border-0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          </div>
+        </section>
+      )}
 
       {/* payloads — connects to the satellites */}
       {payloads.length > 0 && (
