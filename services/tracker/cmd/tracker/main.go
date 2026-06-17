@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -48,11 +49,17 @@ func main() {
 		if dbErr != nil {
 			dbStatus = dbErr.Error()
 		}
+		var envKeys []string
+		for _, e := range os.Environ() {
+			pair := strings.SplitN(e, "=", 2)
+			envKeys = append(envKeys, pair[0])
+		}
 		res := map[string]interface{}{
 			"status":       "ok",
 			"service":      "orbica-tracker",
 			"catalog_size": h.CatalogSize(),
 			"db_status":    dbStatus,
+			"env_keys":     envKeys,
 		}
 		_ = json.NewEncoder(w).Encode(res)
 	})
