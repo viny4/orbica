@@ -1,6 +1,6 @@
 "use client";
 
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, Stars, Html, Line } from "@react-three/drei";
 import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -63,6 +63,100 @@ function categoryOf(mode: ColorMode, p: LivePos, m?: Meta): string {
   if (mode === "purpose") return m?.purpose || "Other";
   return m?.constellation || "Other";
 }
+
+function getBearing(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const dLon = (lng2 - lng1) * (Math.PI / 180);
+  const l1 = lat1 * (Math.PI / 180);
+  const l2 = lat2 * (Math.PI / 180);
+  const y = Math.sin(dLon) * Math.cos(l2);
+  const x = Math.cos(l1) * Math.sin(l2) - Math.sin(l1) * Math.cos(l2) * Math.cos(dLon);
+  return (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
+}
+
+function getDirection(bearing: number) {
+  const dirs = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"];
+  return dirs[Math.round(bearing / 45)];
+}
+
+function getElevation(userLat: number, userLng: number, satLat: number, satLng: number, satAlt: number) {
+  const userVec = new THREE.Vector3(...latLngAltToVec3(userLat, userLng, 0));
+  const satVec = new THREE.Vector3(...latLngAltToVec3(satLat, satLng, satAlt));
+  const up = userVec.clone().normalize();
+  const rel = satVec.clone().sub(userVec);
+  rel.normalize();
+  const cosTheta = up.dot(rel);
+  return (Math.acos(cosTheta) * -180 / Math.PI) + 90;
+}
+
+function useConjunctions() {
+  const [data, setData] = useState<any[]>([]);
+  useEffect(() => {
+    fetch("/api/v1/intel/conjunctions").then(r => r.ok ? r.json() : []).then(d => { if(Array.isArray(d)) setData(d); }).catch(() => {});
+  }, []);
+  return data;
+}
+
+function SkyCamera({ userCoords, active }: { userCoords: {lat: number, lng: number} | null, active: boolean }) {
+  const { camera, gl } = useThree();
+  const rotRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!active || !userCoords) {
+      camera.up.set(0, 1, 0);
+      return;
+    }
+    const v = latLngAltToVec3(userCoords.lat, userCoords.lng, 0.005);
+    const up = new THREE.Vector3(...v).normalize();
+    camera.position.set(v[0], v[1], v[2]);
+    camera.up.copy(up);
+    
+    let isDragging = false;
+    let prevX = 0; let prevY = 0;
+    const onDown = (e: PointerEvent) => { isDragging = true; prevX = e.clientX; prevY = e.clientY; };
+    const onUp = () => { isDragging = false; };
+    const onMove = (e: PointerEvent) => {
+      if (!isDragging) return;
+      rotRef.current.x -= (e.clientX - prevX) * 0.005;
+      rotRef.current.y += (e.clientY - prevY) * 0.005;
+      rotRef.current.y = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotRef.current.y));
+      prevX = e.clientX; prevY = e.clientY;
+    };
+    
+    const dom = gl.domElement;
+    dom.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointermove", onMove);
+    
+    return () => {
+      dom.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointermove", onMove);
+    };
+  }, [active, userCoords, camera, gl]);
+
+  useFrame(() => {
+    if (!active || !userCoords) return;
+    const v = latLngAltToVec3(userCoords.lat, userCoords.lng, 0.005);
+    const up = new THREE.Vector3(...v).normalize();
+    camera.position.set(v[0], v[1], v[2]);
+    camera.up.copy(up);
+
+    const look = new THREE.Vector3(...v).normalize();
+    const right = new THREE.Vector3().crossVectors(up, new THREE.Vector3(0,1,0)).normalize();
+    if (right.lengthSq() < 0.01) right.set(1,0,0);
+    const trueUp = new THREE.Vector3().crossVectors(right, look).normalize();
+    
+    look.applyAxisAngle(trueUp, rotRef.current.x);
+    const rightAfterYaw = new THREE.Vector3().crossVectors(up, look).normalize();
+    look.applyAxisAngle(rightAfterYaw, rotRef.current.y);
+
+    camera.lookAt(v[0] + look.x, v[1] + look.y, v[2] + look.z);
+  });
+
+  return null;
+}
+
+
 
 // ── live stream ──────────────────────────────────────────────────────────────
 function useTrackerStream() {
@@ -160,11 +254,12 @@ function UserLocationMarker({ lat, lng }: { lat: number; lng: number }) {
 }
 
 // ── cloud ────────────────────────────────────────────────────────────────────
-function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
-  positions: LivePos[]; meta: Map<number, Meta>; mode: ColorMode; filter: string | null; dim: boolean;
+function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }: {
+  positions: LivePos[]; meta: Map<number, Meta>; mode: ColorMode; filter: string | null; dim: boolean; showMesh: boolean;
   onPick: (p: LivePos) => void;
 }) {
   const ref = useRef<THREE.Points>(null);
+  const linesRef = useRef<THREE.LineSegments>(null);
   const shown = useMemo(
     () => (filter ? positions.filter((p) => categoryOf(mode, p, meta.get(p.norad_id)) === filter) : positions),
     [positions, filter, mode, meta],
@@ -210,6 +305,38 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
     geom.computeBoundingSphere();
   }, [posAttr, colAttr]);
 
+  const [linePosAttr, setLinePosAttr] = useState<Float32Array | null>(null);
+  useEffect(() => {
+    if (!showMesh || !posAttr) {
+      setLinePosAttr(null);
+      return;
+    }
+    const slIdx: number[] = [];
+    shown.forEach((p, i) => {
+      if (meta.get(p.norad_id)?.constellation === "Starlink") slIdx.push(i);
+    });
+
+    const lines: number[] = [];
+    for (let i=0; i<slIdx.length; i++) {
+      const idxA = slIdx[i] * 3;
+      const xA = posAttr[idxA], yA = posAttr[idxA+1], zA = posAttr[idxA+2];
+      for (let j=i+1; j<slIdx.length; j++) {
+        const idxB = slIdx[j] * 3;
+        const xB = posAttr[idxB], yB = posAttr[idxB+1], zB = posAttr[idxB+2];
+        const dx = xA - xB, dy = yA - yB, dz = zA - zB;
+        if (dx*dx + dy*dy + dz*dz < 0.05) lines.push(xA, yA, zA, xB, yB, zB);
+      }
+    }
+    setLinePosAttr(new Float32Array(lines));
+  }, [posAttr, showMesh, shown, meta]);
+
+  useEffect(() => {
+    if (linesRef.current && linePosAttr) {
+      linesRef.current.geometry.setAttribute("position", new THREE.BufferAttribute(linePosAttr, 3));
+      linesRef.current.geometry.computeBoundingSphere();
+    }
+  }, [linePosAttr]);
+
   const sprite = useMemo(() => {
     const canvas = document.createElement("canvas");
     canvas.width = 16;
@@ -228,6 +355,7 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
   }, []);
 
   return (
+    <>
     <points
       ref={ref}
       onClick={(e) => {
@@ -247,12 +375,19 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
         sizeAttenuation={true}
       />
     </points>
+    {showMesh && linePosAttr && (
+      <lineSegments ref={linesRef}>
+        <bufferGeometry />
+        <lineBasicMaterial color="#7df9ff" transparent opacity={0.15} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </lineSegments>
+    )}
+    </>
   );
 }
 
 // Orbit path + glowing marker for the tracked satellite, propagated client-side.
-function TrackedSatellite({ norad, line1, line2, offsetMin, onTelemetry }: {
-  norad: number; line1: string; line2: string; offsetMin: number; onTelemetry: (p: GeoPos) => void;
+function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass }: {
+  norad: number; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void;
 }) {
   const marker = useRef<THREE.Object3D>(null);
   const glow = useRef<THREE.Mesh>(null);
@@ -283,6 +418,42 @@ function TrackedSatellite({ norad, line1, line2, offsetMin, onTelemetry }: {
     const timer = setInterval(fetchISS, 3000);
     return () => clearInterval(timer);
   }, [norad]);
+
+  const [nextPass, setNextPass] = useState<{ time: Date, maxEl: number } | null>(null);
+  useEffect(() => {
+    if (!userCoords || norad === 25544) { setNextPass(null); return; }
+    
+    let maxEl = 0;
+    const now = Date.now();
+    let inPass = false;
+    let passStart = -1;
+    
+    for(let i=0; i<1440; i++) {
+      const t = now + i * 120000;
+      const p = propagateTLE(line1, line2, new Date(t));
+      if (!p) continue;
+      
+      const el = getElevation(userCoords.lat, userCoords.lng, p.lat, p.lng, p.altKm);
+      if (el > 10) {
+        if (!inPass) { inPass = true; passStart = t; }
+        if (el > maxEl) maxEl = el;
+      } else {
+        if (inPass) {
+          if (passStart > now) {
+             setNextPass({ time: new Date(passStart), maxEl });
+             return;
+          }
+          inPass = false;
+          maxEl = 0;
+        }
+      }
+    }
+    setNextPass(null);
+  }, [userCoords, line1, line2, norad]);
+
+  useEffect(() => {
+    if (onNextPass) onNextPass(nextPass);
+  }, [nextPass, onNextPass]);
 
   useFrame((_, delta) => {
     acc.current += delta;
@@ -366,8 +537,12 @@ export default function GlobalTracker() {
   const [filter, setFilter] = useState<string | null>(null);
   const [tracked, setTracked] = useState<Tracked | null>(null);
   const [telemetry, setTelemetry] = useState<GeoPos | null>(null);
+  const [nextPass, setNextPass] = useState<{time: Date, maxEl: number} | null>(null);
   const [query, setQuery] = useState("");
   const [showPanel, setShowPanel] = useState(true);
+  const [showMesh, setShowMesh] = useState(false);
+  const [viewMode, setViewMode] = useState<"orbit" | "sky">("orbit");
+  const conjunctions = useConjunctions();
 
   const [offsetMin, setOffsetMin] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
@@ -377,9 +552,10 @@ export default function GlobalTracker() {
   const sun = useMemo(() => sunDirection(shownTime), [shownTime]);
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocationName, setUserLocationName] = useState<string | null>(null);
   const [locLoading, setLocLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
-  const [nearbySats, setNearbySats] = useState<{ norad_id: number; name: string; distance: number; lat: number; lng: number; alt: number }[]>([]);
+  const [nearbySats, setNearbySats] = useState<{ norad_id: number; name: string; distance: number; lat: number; lng: number; alt: number, bearing: number, direction: string }[]>([]);
 
   const handleShareLocation = () => {
     if (!navigator.geolocation) {
@@ -390,8 +566,20 @@ export default function GlobalTracker() {
     setLocError(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setUserCoords({ lat, lng });
         setLocLoading(false);
+        fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.address) {
+              const name = data.address.village || data.address.town || data.address.city || data.address.county || data.display_name.split(',')[0];
+              const state = data.address.state || data.address.country;
+              setUserLocationName(`${name}, ${state}`);
+            }
+          })
+          .catch(() => {});
       },
       (err) => {
         setLocError("Location access denied");
@@ -423,6 +611,8 @@ export default function GlobalTracker() {
       const dz = satZ - userZ;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
+      const bearing = getBearing(userCoords.lat, userCoords.lng, p.lat, p.lng);
+
       return {
         norad_id: p.norad_id,
         name: p.name,
@@ -430,6 +620,8 @@ export default function GlobalTracker() {
         lat: p.lat,
         lng: p.lng,
         alt: p.altitude_km,
+        bearing,
+        direction: getDirection(bearing),
       };
     });
 
@@ -458,6 +650,7 @@ export default function GlobalTracker() {
       if (t?.tle_line1 && t?.tle_line2) {
         setTracked({ norad, name: m.name, slug: m.id, line1: t.tle_line1, line2: t.tle_line2 });
         setTelemetry(null);
+        setNextPass(null);
         setQuery("");
       }
     } catch { /* ignore */ }
@@ -476,6 +669,26 @@ export default function GlobalTracker() {
 
   return (
     <div className={`grid gap-4 ${showPanel ? "lg:grid-cols-[300px_1fr]" : "grid-cols-1"}`}>
+      <style>{`
+        @keyframes ticker {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+      `}</style>
+      
+      {conjunctions.length > 0 && (
+        <div className="fixed top-16 left-0 w-full overflow-hidden bg-red-500/20 text-red-200 text-[10px] font-mono tracking-widest border-b border-red-500/30 py-1.5 z-20 backdrop-blur pointer-events-none">
+          <div className="animate-[ticker_60s_linear_infinite] whitespace-nowrap">
+            {conjunctions.concat(conjunctions).map((c, i) => (
+              <span key={i} className="mx-8">
+                <span className="font-bold text-red-400">WARNING: </span>
+                {c.sat_a_name} ↔ {c.sat_b_name} · MISS: {c.miss_km.toFixed(2)}km · REL SPEED: {c.rel_speed_kms.toFixed(1)}km/s
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* analytics sidebar */}
       {showPanel && (
         <aside className="order-2 lg:order-1 space-y-6 lg:max-h-[82vh] lg:overflow-y-auto pr-1">
@@ -499,7 +712,14 @@ export default function GlobalTracker() {
             <Bars data={modeData} colorOf={colorOfCat} onClick={(k) => setFilter(filter === k ? null : k)} active={filter} />
           </div>
           <div><div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2">Altitude distribution</div><Bars data={altHist} /></div>
-          <div><div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2">Top operators</div><Bars data={country} /></div>
+          <div>
+            <div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2 flex justify-between">
+              <span>Constellation Mesh</span>
+              <button onClick={() => setShowMesh(!showMesh)} className={`px-2 py-0.5 border ${showMesh ? 'border-[var(--color-space-accent-2)] text-[var(--color-space-accent-2)]' : 'border-white/20 text-white/50'}`}>
+                {showMesh ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
 
           {/* Geolocation Card */}
           <div className="border border-white/10 bg-white/[0.015] p-4">
@@ -524,9 +744,17 @@ export default function GlobalTracker() {
               </div>
             ) : (
               <div className="space-y-4 font-mono text-[10px] text-white/60">
+                <div className="flex justify-between items-center mb-3">
+                   <button onClick={() => setViewMode(v => v === "orbit" ? "sky" : "orbit")} className={`w-full py-1.5 border tracking-widest uppercase transition-colors ${viewMode === "sky" ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "border-white/10 text-white/50 hover:bg-white/5 hover:text-white"}`}>
+                     {viewMode === "sky" ? "Exit Sky View" : "Enter Sky View"}
+                   </button>
+                </div>
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span>GPS COORDS:</span>
-                  <span className="text-white">{userCoords.lat.toFixed(3)}°N, {userCoords.lng.toFixed(3)}°E</span>
+                  <div className="text-right">
+                    <div className="text-white">{userCoords.lat.toFixed(3)}°N, {userCoords.lng.toFixed(3)}°E</div>
+                    {userLocationName && <div className="text-[9px] text-emerald-400/80 mt-1">{userLocationName}</div>}
+                  </div>
                 </div>
                 
                 <div className="space-y-2">
@@ -538,7 +766,10 @@ export default function GlobalTracker() {
                         onClick={() => track(sat.norad_id)}
                         className="w-full text-left bg-white/[0.01] hover:bg-white/[0.04] border border-white/5 p-2 flex justify-between items-center transition-colors group"
                       >
-                        <span className="truncate text-white/70 group-hover:text-[var(--color-space-accent-2)] transition-colors pr-2">{sat.name}</span>
+                        <div className="flex flex-col min-w-0 pr-2">
+                          <span className="truncate text-white/70 group-hover:text-[var(--color-space-accent-2)] transition-colors">{sat.name}</span>
+                          <span className="text-[9px] text-white/40 font-mono mt-0.5">{sat.direction} ({Math.round(sat.bearing)}°)</span>
+                        </div>
                         <span className="text-emerald-400 shrink-0 font-semibold">{Math.round(sat.distance).toLocaleString()} km</span>
                       </button>
                     ))}
@@ -569,8 +800,8 @@ export default function GlobalTracker() {
               <Earth spin={false} />
               <CountryLabels />
               {userCoords && <UserLocationMarker lat={userCoords.lat} lng={userCoords.lng} />}
-              <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} onPick={(p) => track(p.norad_id)} />
-              {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} onTelemetry={setTelemetry} />}
+              <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} showMesh={showMesh} onPick={(p) => track(p.norad_id)} />
+              {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} />}
               {tracked && telemetry && (
                 <Footprint
                   lat={telemetry.lat}
@@ -579,8 +810,9 @@ export default function GlobalTracker() {
                   color="#7df9ff"
                 />
               )}
+              <SkyCamera userCoords={userCoords} active={viewMode === "sky"} />
             </Suspense>
-            <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked} autoRotateSpeed={0.18} />
+            <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked && viewMode === "orbit"} autoRotateSpeed={0.18} enabled={viewMode === "orbit"} />
           </Canvas>
         )}
 
@@ -616,7 +848,7 @@ export default function GlobalTracker() {
             <div className="absolute bottom-16 left-3 bg-black/70 backdrop-blur border border-[var(--color-space-accent-2)]/40 p-4 w-64">
               <div className="flex items-start justify-between gap-3">
                 <span className="text-[var(--color-space-accent-2)] font-semibold text-sm">{tracked.name}</span>
-                <button onClick={() => { setTracked(null); setTelemetry(null); }} className="text-white/40 hover:text-white text-xs">✕</button>
+                <button onClick={() => { setTracked(null); setTelemetry(null); setNextPass(null); }} className="text-white/40 hover:text-white text-xs">✕</button>
               </div>
               {telemetry ? (
                 <div className="mt-2 space-y-0.5 text-xs font-mono text-white/65">
@@ -625,6 +857,12 @@ export default function GlobalTracker() {
                   <div>vel {telemetry.speedKmS.toFixed(2)} km/s</div>
                 </div>
               ) : <div className="mt-2 text-xs text-white/40">propagating…</div>}
+              {nextPass && (
+                <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+                  <div className="uppercase tracking-widest text-emerald-400/60 mb-0.5">Next Flyover</div>
+                  <div>{nextPass.time.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })} (Max El: {Math.round(nextPass.maxEl)}°)</div>
+                </div>
+              )}
               <Link href={`/satellites/${tracked.slug}`} className="inline-block mt-2 text-[11px] tracking-[0.15em] uppercase text-[var(--color-space-accent-2)]/80 hover:text-[var(--color-space-accent-2)]">Details →</Link>
             </div>
           )
