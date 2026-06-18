@@ -11,13 +11,13 @@ export function Eyebrow({ children }: { children: React.ReactNode }) {
 }
 
 export function PageHeader({
-  eyebrow,
   title,
+  eyebrow,
   meta,
   back,
 }: {
-  eyebrow?: string;
-  title: string;
+  title: string | React.ReactNode;
+  eyebrow?: React.ReactNode;
   meta?: React.ReactNode;
   back?: { href: string; label: string };
 }) {

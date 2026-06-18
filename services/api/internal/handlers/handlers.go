@@ -22,6 +22,7 @@ func (h *Handlers) Register(app *fiber.App) {
 	v1 := app.Group("/api/v1")
 
 	v1.Get("/timeline/years", h.TimelineYears)
+	v1.Get("/timeline/on-this-day", h.TimelineOnThisDay)
 	v1.Get("/timeline/years/:year", h.TimelineYear)
 
 	v1.Get("/agencies", h.ListAgencies)
@@ -47,6 +48,7 @@ func (h *Handlers) Register(app *fiber.App) {
 	v1.Get("/intel/events", h.SpaceEvents)
 
 	v1.Get("/launches/upcoming", h.UpcomingLaunches)
+	v1.Get("/launches/failures", h.Failures)
 	v1.Get("/launches/:id", h.GetLaunch)
 	v1.Get("/on-this-day", h.OnThisDay)
 	v1.Get("/constellations", h.ListConstellations)

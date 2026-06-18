@@ -9,6 +9,13 @@
   --color-space-accent-2: #7df9ff;
   --color-space-text: #e6ecff;
   --color-space-muted: #8a97b8;
+  
+  --animate-marquee: marquee 35s linear infinite;
+  
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
 }
 
 html,

@@ -8,7 +8,7 @@ func (h *Handlers) ListRockets(c *fiber.Ctx) error {
 	status := c.Query("status")
 	reusable := c.Query("reusable")
 	q := c.Query("q")
-	limit := clampInt(c.QueryInt("limit", 60), 1, 200)
+	limit := clampInt(c.QueryInt("limit", 60), 1, 1000)
 	offset := maxInt(c.QueryInt("offset", 0), 0)
 
 	return h.queryJSON(c, "[]", `
@@ -70,13 +70,18 @@ func (h *Handlers) RocketLaunches(c *fiber.Ctx) error {
 // RocketPayloads returns satellites launched by this rocket (UUID or slug).
 func (h *Handlers) RocketPayloads(c *fiber.Ctx) error {
 	key := c.Params("id")
+	limit := clampInt(c.QueryInt("limit", 60), 1, 1000)
+	offset := maxInt(c.QueryInt("offset", 0), 0)
+
 	return h.queryJSON(c, "[]", `
-		SELECT json_agg(row_to_json(s) ORDER BY s.launch_date DESC)
+		SELECT json_agg(row_to_json(s))
 		FROM (
 			SELECT DISTINCT s.id, s.slug, s.name, s.norad_id, s.purpose, s.constellation,
 			       s.orbit_type, s.status, s.launch_date
 			FROM satellites s
 			JOIN launch_events le ON le.id = s.launch_event_id
 			WHERE le.rocket_id = (SELECT id FROM rocket_vehicles WHERE id::text = $1 OR slug = $1)
-		) s`, key)
+			ORDER BY s.launch_date DESC NULLS LAST
+			LIMIT $2 OFFSET $3
+		) s`, key, limit, offset)
 }

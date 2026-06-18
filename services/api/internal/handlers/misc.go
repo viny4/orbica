@@ -49,6 +49,28 @@ func (h *Handlers) UpcomingLaunches(c *fiber.Ctx) error {
 		) l`, limit)
 }
 
+// Failures returns launches where the outcome was not a success.
+func (h *Handlers) Failures(c *fiber.Ctx) error {
+	limit := clampInt(c.QueryInt("limit", 100), 1, 1000)
+	offset := clampInt(c.QueryInt("offset", 0), 0, 100000)
+	return h.queryJSON(c, "[]", `
+		SELECT json_agg(row_to_json(l))
+		FROM (
+			SELECT le.id, le.name, le.mission_name, le.mission_description, le.launch_time, le.launch_year,
+			       le.outcome, le.mission_type,
+			       rv.slug AS rocket_slug, rv.name AS rocket_name,
+			       a.slug AS agency_slug, a.name AS agency_name,
+			       ls.name AS site_name
+			FROM launch_events le
+			LEFT JOIN rocket_vehicles rv ON rv.id = le.rocket_id
+			LEFT JOIN agencies a ON a.id = le.agency_id
+			LEFT JOIN launch_sites ls ON ls.id = le.launch_site_id
+			WHERE le.outcome ILIKE 'Failure%' OR le.outcome ILIKE 'Partial Failure%'
+			ORDER BY le.launch_time DESC
+			LIMIT $1 OFFSET $2
+		) l`, limit, offset)
+}
+
 // OnThisDay returns launches across all years matching ?date=MM-DD.
 func (h *Handlers) OnThisDay(c *fiber.Ctx) error {
 	date := c.Query("date") // expected MM-DD

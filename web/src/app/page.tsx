@@ -1,6 +1,8 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { safe } from "@/components/EmptyState";
+import { api } from "@/lib/api";
+import { OnThisDay } from "@/components/timeline/OnThisDay";
 
 const Hero3D = dynamic(() => import("@/components/home/Hero3D"), { ssr: false });
 
@@ -45,6 +47,10 @@ const fmt = (n: number | undefined) => (n ?? 0).toLocaleString("en-US");
 export default async function Home() {
   const s = await getStats();
   const lastSync = await getLastSync();
+  const onThisDayLaunches = await safe(api.onThisDay(), []);
+  const upcomingLaunches = await safe(api.upcoming(3), []);
+  const topAgencies = (await safe(api.agencies(), [])).sort((a, b) => b.total_launches - a.total_launches).slice(0, 4);
+  const recentAnomalies = await safe(api.failures(3, 0), []);
 
   return (
     <div className="bg-[#03050a] text-white min-h-screen">
@@ -109,28 +115,147 @@ export default async function Home() {
       </section>
 
       {/* ───────────────────── STATS DASHBOARD ───────────────────── */}
-      <section className="border-y border-white/10 bg-[#06080e] relative z-20">
-        <div className="mx-auto max-w-[1400px] px-6 lg:px-10 grid grid-cols-2 md:grid-cols-4 divide-x divide-white/5">
-          {[
-            [fmt(s?.satellites), "Satellites tracked", "text-[var(--color-space-accent-2)]"],
-            [fmt(s?.launches), "Launches catalogued", "text-white"],
-            [fmt(s?.rockets), "Launch vehicles", "text-white"],
-            [fmt(s?.agencies), "Space agencies", "text-[var(--color-space-accent)]"],
-          ].map(([num, label, color], i) => (
-            <div key={i} className="px-6 sm:px-8 py-10 flex flex-col justify-center">
-              <span className={`text-3xl sm:text-4xl lg:text-5xl font-extralight tracking-tight ${color}`}>
-                {num}
-              </span>
-              <span className="mt-2 text-[10px] tracking-[0.22em] uppercase text-white/40 font-mono">
-                {label}
-              </span>
+      <section className="border-y border-white/10 bg-[#06080e] relative z-20 overflow-hidden py-5 flex">
+        <div className="flex animate-marquee whitespace-nowrap">
+          {/* Duplicate content twice to create a seamless scrolling loop */}
+          {[...Array(2)].map((_, loopIdx) => (
+            <div key={loopIdx} className="flex items-center shrink-0 pr-16 gap-16">
+              {[
+                [fmt(s?.satellites), "Satellites tracked", "text-[var(--color-space-accent-2)]"],
+                [fmt(s?.launches), "Launches catalogued", "text-white"],
+                [fmt(s?.rockets), "Launch vehicles", "text-white"],
+                [fmt(s?.agencies), "Space agencies", "text-[var(--color-space-accent)]"],
+              ].map(([num, label, color], i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <span className={`text-xl font-mono tracking-tight ${color}`}>
+                    {num}
+                  </span>
+                  <span className="text-[10px] tracking-[0.2em] uppercase text-white/40 font-mono">
+                    {label}
+                  </span>
+                </div>
+              ))}
             </div>
           ))}
         </div>
       </section>
 
+      {/* ───────────────────── ON THIS DAY WIDGET ───────────────────── */}
+      {onThisDayLaunches && onThisDayLaunches.length > 0 && (
+        <section className="relative py-10 border-b border-white/10 bg-[#06080f]/50">
+          <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
+             <OnThisDay launches={onThisDayLaunches} />
+          </div>
+        </section>
+      )}
+
+      {/* ───────────────────── UPCOMING LAUNCHES ───────────────────── */}
+      <section className="relative py-24 border-b border-white/10">
+        <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
+          <div className="flex justify-between items-end mb-10 border-b border-white/10 pb-4">
+            <div>
+              <span className="text-[10px] tracking-[0.3em] uppercase text-[var(--color-space-accent-2)] font-mono">Live Countdowns</span>
+              <h2 className="text-3xl uppercase font-light tracking-tight mt-2">Upcoming Missions</h2>
+            </div>
+            <Link href="/upcoming" className="text-[10px] tracking-[0.2em] uppercase text-white/50 hover:text-white transition-colors font-mono">
+              View All →
+            </Link>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {upcomingLaunches.map((l: any) => (
+              <Link key={l.id} href={`/launches/${l.id}`} className="group relative block border border-white/10 bg-white/[0.015] p-6 transition-colors duration-300 hover:border-[var(--color-space-accent-2)]/50 hover:bg-white/[0.03]">
+                <div className="flex flex-col h-full">
+                  <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-mono mb-4 block">
+                    {new Date(l.launch_time).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                  <h3 className="text-xl font-light mb-2 group-hover:text-[var(--color-space-accent-2)] transition-colors line-clamp-2">
+                    {l.name}
+                  </h3>
+                  <div className="mt-auto pt-4 flex flex-col gap-1">
+                    <span className="text-xs text-white/50">{l.rocket_name}</span>
+                    <span className="text-[10px] tracking-wider uppercase font-mono text-white/30">{l.agency_name}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── TOP AGENCIES ───────────────────── */}
+      <section className="relative py-24 border-b border-white/10 bg-[#06080e]/30">
+        <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
+          <div className="flex justify-between items-end mb-10 border-b border-white/10 pb-4">
+            <div>
+              <span className="text-[10px] tracking-[0.3em] uppercase text-white/40 font-mono">Global Capabilities</span>
+              <h2 className="text-3xl uppercase font-light tracking-tight mt-2">Leading Agencies</h2>
+            </div>
+            <Link href="/agencies" className="text-[10px] tracking-[0.2em] uppercase text-white/50 hover:text-white transition-colors font-mono">
+              Directory →
+            </Link>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {topAgencies.map((agency: any, idx: number) => (
+              <Link key={agency.id} href={`/agencies/${agency.id}`} className="group relative block border border-white/10 bg-white/[0.015] p-6 transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.03]">
+                <div className="flex flex-col h-full">
+                  <div className="text-[4rem] font-extralight text-white/5 leading-none absolute top-4 right-4 pointer-events-none">
+                    0{idx + 1}
+                  </div>
+                  <h3 className="text-2xl font-light mb-1 mt-6 group-hover:text-white text-white/80 transition-colors">
+                    {agency.abbrev || agency.name}
+                  </h3>
+                  <span className="text-[10px] uppercase tracking-widest font-mono text-white/30 truncate max-w-full block">
+                    {agency.name}
+                  </span>
+                  <div className="mt-8">
+                    <div className="text-3xl font-light text-[var(--color-space-accent-2)]">{fmt(agency.total_launches)}</div>
+                    <div className="text-[9px] uppercase tracking-[0.2em] font-mono text-white/40 mt-1">Total Launches</div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ───────────────────── RECENT ANOMALIES ───────────────────── */}
+      <section className="relative py-24 border-b border-white/10">
+        <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
+          <div className="flex justify-between items-end mb-10 border-b border-white/10 pb-4">
+            <div>
+              <span className="text-[10px] tracking-[0.3em] uppercase text-red-500/70 font-mono">Mission Critical</span>
+              <h2 className="text-3xl uppercase font-light tracking-tight mt-2">Recent Anomalies</h2>
+            </div>
+            <Link href="/failures" className="text-[10px] tracking-[0.2em] uppercase text-white/50 hover:text-white transition-colors font-mono">
+              Failure Archive →
+            </Link>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {recentAnomalies.map((l: any) => (
+              <Link key={l.id} href={`/launches/${l.id}`} className="group relative block border border-red-900/30 bg-red-950/10 p-6 transition-colors duration-300 hover:border-red-500/40 hover:bg-red-900/20">
+                <div className="flex flex-col h-full">
+                  <span className="text-[10px] uppercase tracking-wider text-red-400 font-mono mb-4 block border border-red-500/30 px-2 py-1 w-max bg-red-500/10">
+                    {l.outcome}
+                  </span>
+                  <h3 className="text-xl font-light mb-2 group-hover:text-red-300 text-white transition-colors">
+                    {l.name}
+                  </h3>
+                  <div className="mt-auto pt-4 flex flex-col gap-1">
+                    <span className="text-xs text-white/50">{l.rocket_name}</span>
+                    <span className="text-[10px] tracking-wider uppercase font-mono text-white/30">{l.agency_name}</span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ───────────────────── FEATURE SECTIONS ───────────────────── */}
-      <section className="relative py-20 border-b border-white/10">
+      <section className="relative py-32 border-b border-white/10 bg-[#06080e]/50">
         <div className="mx-auto max-w-[1400px] px-6 lg:px-10">
           <div className="text-center max-w-xl mx-auto mb-16 space-y-4">
             <span className="text-[10px] tracking-[0.3em] uppercase text-[var(--color-space-accent-2)] font-mono">System Core Modules</span>
@@ -164,9 +289,9 @@ export default async function Home() {
       </section>
 
       {/* ───────────────────── FOOTER ───────────────────── */}
-      <footer className="border-t border-white/10 bg-black/40 py-10 text-center relative z-20">
+      <footer className="border-t border-white/10 bg-black py-12 text-center relative z-20">
         <p className="text-[10px] tracking-[0.3em] uppercase text-white/30 font-mono">
-          ORBICA SYSTEM &copy; 2026 &middot; TRANSMITTING NOMINAL DATA
+          ORBICA SYSTEM &copy; {new Date().getFullYear()} &middot; TRANSMITTING NOMINAL DATA
         </p>
       </footer>
     </div>

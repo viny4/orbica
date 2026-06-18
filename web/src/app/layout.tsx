@@ -32,6 +32,8 @@ const NAV = [
   ["Agencies", "/agencies"],
   ["Rockets", "/rockets"],
   ["Satellites", "/satellites"],
+  ["Compare", "/compare"],
+  ["Failures", "/failures"],
   ["Track", "/track"],
   ["Intel", "/intel"],
 ];

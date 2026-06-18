@@ -116,11 +116,14 @@ export const api = {
   intelEvents: () => get<any[]>("/intel/events", 300),
   intelConjunctions: () => get<any[]>("/intel/conjunctions", 300),
   intelReentries: () => get<any[]>("/intel/reentries", 300),
+  onThisDay: () => get<LaunchRow[]>("/timeline/on-this-day", 3600),
   timelineYear: (year: number) => get<LaunchRow[]>(`/timeline/years/${year}`),
+  upcoming: (limit = 4) => get<LaunchRow[]>(`/launches/upcoming?limit=${limit}`, 60),
+  failures: (limit = 100, offset = 0) => get<LaunchRow[]>(`/launches/failures?limit=${limit}&offset=${offset}`, 60),
   agencies: () => get<Agency[]>("/agencies"),
   agency: (id: string) => get<Record<string, unknown>>(`/agencies/${id}`),
   rockets: (q = "") =>
-    get<Rocket[]>(`/rockets?limit=200${q ? `&q=${encodeURIComponent(q)}` : ""}`),
+    get<Rocket[]>(`/rockets?limit=1000${q ? `&q=${encodeURIComponent(q)}` : ""}`),
   rocket: (id: string) => get<Record<string, unknown>>(`/rockets/${id}`),
   satellites: (q = "") =>
     get<Satellite[]>(`/satellites${q ? `?q=${encodeURIComponent(q)}` : ""}`),

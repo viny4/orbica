@@ -29,7 +29,11 @@ func (h *Handlers) ListSatellites(c *fiber.Ctx) error {
 			  AND ($5 = '' OR s.owner_code = $5)
 			  AND ($6 = '' OR s.object_type = $6)
 			  AND ($7 = '' OR s.name ILIKE '%' || $7 || '%')
-			ORDER BY s.launch_date DESC NULLS LAST, s.name
+			ORDER BY 
+			  (s.image_url IS NOT NULL) DESC,
+			  CASE WHEN s.name ILIKE '%ISS%' OR s.name ILIKE '%Hubble%' OR s.name ILIKE '%James Webb%' THEN 0 ELSE 1 END ASC,
+			  s.launch_date DESC NULLS LAST, 
+			  s.name
 			LIMIT $8 OFFSET $9
 		) s`, purpose, orbit, status, constellation, owner, objectType, q, limit, offset)
 }

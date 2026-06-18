@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
 import { PageHeader, Chip } from "@/components/ui";
 import { News } from "@/components/News";
+import { ClientRocketPayloads } from "@/components/rockets/ClientRocketPayloads";
 
 export const runtime = "edge";
 
@@ -23,7 +24,7 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
   const [rocket, articles, payloads] = await Promise.all([
     safe<Rocket | null>(api.rocket(params.id), null),
     safe(api.rocketArticles(params.id), []),
-    safe(api.rocketPayloads(params.id), []),
+    safe(api.rocketPayloads(params.id), []), // now fetches up to 60 by default
   ]);
 
   if (!rocket) {
@@ -36,6 +37,7 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
     ["Diameter", rocket.diameter_m && `${rocket.diameter_m} m`],
     ["Mass", rocket.mass_kg && `${Number(rocket.mass_kg).toLocaleString()} kg`],
     ["Stages", rocket.stages],
+    ["Thrust", rocket.thrust_kn && `${Number(rocket.thrust_kn).toLocaleString()} kN`],
     ["Payload to LEO", rocket.payload_leo_kg && `${Number(rocket.payload_leo_kg).toLocaleString()} kg`],
     ["Payload to GTO", rocket.payload_gto_kg && `${Number(rocket.payload_gto_kg).toLocaleString()} kg`],
     ["First flight", rocket.first_flight],
@@ -45,6 +47,24 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
 
   const family = rocket.family?.name as string | undefined;
   const manufacturer = rocket.manufacturer?.name as string | undefined;
+  const manufacturerSlug = rocket.manufacturer?.slug as string | undefined;
+
+  const eyebrowContent = (
+    <span className="flex items-center gap-1.5 uppercase">
+      {family ? <span>{family}</span> : null}
+      {family && manufacturer ? <span className="text-white/20">·</span> : null}
+      {manufacturer ? (
+        manufacturerSlug ? (
+          <Link href={`/agencies/${manufacturerSlug}`} className="hover:text-white transition-colors">
+            {manufacturer}
+          </Link>
+        ) : (
+          <span>{manufacturer}</span>
+        )
+      ) : null}
+      {!family && !manufacturer && <span>Launch Vehicle</span>}
+    </span>
+  );
 
   // Group engines by stage for the propulsion breakdown.
   const STAGE_LABEL: Record<number, string> = {
@@ -60,7 +80,7 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
   return (
     <div>
       <PageHeader
-        eyebrow={[family, manufacturer].filter(Boolean).join(" · ") || "Launch Vehicle"}
+        eyebrow={eyebrowContent}
         title={String(rocket.name)}
         back={{ href: "/rockets", label: "Rockets" }}
         meta={
@@ -158,30 +178,7 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
         </section>
       )}
 
-      {payloads.length > 0 && (
-        <section className="mt-16">
-          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5 border-b border-white/10 pb-3">
-            Payloads it launched · {payloads.length}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5">
-            {payloads.slice(0, 24).map((s) => (
-              <Link
-                key={s.id}
-                href={`/satellites/${s.slug}`}
-                className="group bg-[#06080f] p-4 hover:bg-[#0c1322] transition-colors"
-              >
-                <div className="font-light truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
-                  {s.name}
-                </div>
-                <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-1">
-                  {s.constellation ? `${s.constellation} · ` : ""}
-                  {s.orbit_type ?? s.purpose ?? "payload"}
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <ClientRocketPayloads rocketId={rocket.id} initialPayloads={payloads as any} />
 
       <News articles={articles} />
     </div>

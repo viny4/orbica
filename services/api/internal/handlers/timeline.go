@@ -40,3 +40,23 @@ func (h *Handlers) TimelineYear(c *fiber.Ctx) error {
 			LIMIT $2 OFFSET $3
 		) l`, year, limit, offset)
 }
+
+// TimelineOnThisDay returns historical launches that occurred on today's month and day.
+func (h *Handlers) TimelineOnThisDay(c *fiber.Ctx) error {
+	limit := clampInt(c.QueryInt("limit", 10), 1, 50)
+	return h.queryJSON(c, "[]", `
+		SELECT json_agg(row_to_json(l))
+		FROM (
+			SELECT le.id, le.name, le.mission_name, le.launch_time, le.launch_year, le.outcome,
+			       le.orbit_achieved,
+			       rv.id AS rocket_id, rv.slug AS rocket_slug, rv.name AS rocket_name,
+			       a.id  AS agency_id, a.slug AS agency_slug, a.name AS agency_name, a.abbrev AS agency_abbrev
+			FROM launch_events le
+			LEFT JOIN rocket_vehicles rv ON rv.id = le.rocket_id
+			LEFT JOIN agencies a ON a.id = le.agency_id
+			WHERE EXTRACT(MONTH FROM le.launch_time) = EXTRACT(MONTH FROM CURRENT_DATE)
+			  AND EXTRACT(DAY FROM le.launch_time) = EXTRACT(DAY FROM CURRENT_DATE)
+			ORDER BY le.launch_time DESC
+			LIMIT $1
+		) l`, limit)
+}
