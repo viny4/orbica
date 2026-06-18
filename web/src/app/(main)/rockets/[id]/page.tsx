@@ -8,6 +8,22 @@ import { ClientRocketPayloads } from "@/components/rockets/ClientRocketPayloads"
 
 export const runtime = "edge";
 
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const rocket = await safe<Rocket | null>(api.rocket(params.id), null);
+  if (!rocket) return { title: "Not found — Orbica" };
+  const family = rocket.family?.name ? `${rocket.family.name} family` : "";
+  const manufacturer = rocket.manufacturer?.name || "";
+  const desc = [manufacturer, family, rocket.status ? `Status: ${rocket.status}` : ""]
+    .filter(Boolean).join(" · ");
+  
+  return {
+    title: `${rocket.name} — Orbica`,
+    description: `Details and specifications for the ${rocket.name} launch vehicle. ${desc}`,
+  };
+}
+
 // Visual (real photo + interactive 3D) is client-only — never SSR it.
 const RocketVisual = dynamic(() => import("@/components/rockets/RocketVisual"), {
   ssr: false,

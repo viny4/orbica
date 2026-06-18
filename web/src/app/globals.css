@@ -2,6 +2,9 @@
 
 /* Dark space theme tokens */
 @theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+
   --color-space-bg: #05070f;
   --color-space-panel: #0d1322;
   --color-space-border: #1c2740;
@@ -23,6 +26,10 @@ body {
   background-color: var(--color-space-bg);
   color: var(--color-space-text);
   min-height: 100%;
+}
+
+h1, h2, .font-serif {
+  font-family: var(--font-serif);
 }
 
 body {

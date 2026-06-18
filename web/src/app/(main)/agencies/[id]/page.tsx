@@ -8,6 +8,18 @@ import { country } from "@/lib/flags";
 
 export const runtime = "edge";
 
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const a = await safe<Agency | null>(api.agency(params.id), null);
+  if (!a) return { title: "Not found — Orbica" };
+  
+  return {
+    title: `${a.name} — Orbica`,
+    description: `${a.name} is a ${a.agency_type?.toLowerCase() ?? "space agency"} based in ${country(a.country_code)?.name ?? "Unknown"}. View their launch history and vehicles on Orbica.`,
+  };
+}
+
 type Agency = Record<string, any>;
 
 const fmtDate = (s?: string) =>

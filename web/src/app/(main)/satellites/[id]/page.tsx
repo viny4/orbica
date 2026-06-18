@@ -8,6 +8,18 @@ import { Flag } from "@/components/Flag";
 
 export const runtime = "edge";
 
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const sat = await safe<Sat | null>(api.satellite(params.id), null);
+  if (!sat) return { title: "Not found — Orbica" };
+  
+  return {
+    title: `${sat.name} — Orbica`,
+    description: `Details and real-time orbit tracking for ${sat.name} (NORAD ${sat.norad_id}). Purpose: ${sat.purpose ?? "Unknown"}. Status: ${OPS[sat.ops_status] ?? sat.status ?? "Unknown"}.`,
+  };
+}
+
 const SatelliteVisual = dynamic(() => import("@/components/satellites/SatelliteVisual"), {
   ssr: false,
   loading: () => (

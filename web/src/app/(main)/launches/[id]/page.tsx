@@ -5,6 +5,21 @@ import { PageHeader, Chip, Outcome } from "@/components/ui";
 
 export const runtime = "edge";
 
+import type { Metadata } from "next";
+
+export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
+  const launch = await safe<Launch | null>(api.launch(params.id), null);
+  if (!launch) return { title: "Not found — Orbica" };
+  
+  const rocketName = launch.rocket?.name ?? "Unknown rocket";
+  const title = getLaunchTitle(launch.mission_name, launch.name, rocketName);
+  
+  return {
+    title: `${title} — Orbica`,
+    description: `Mission details for ${title}, launched aboard ${rocketName}. Outcome: ${launch.outcome?.replace("_", " ") ?? "Unknown"}.`,
+  };
+}
+
 type Launch = Record<string, any>;
 
 function fmtDateTime(d?: string | null) {

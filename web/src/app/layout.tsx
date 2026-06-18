@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Inter, Fraunces } from "next/font/google";
 import "./globals.css";
 import GlobalSearch from "@/components/GlobalSearch";
 import MobileNav from "@/components/MobileNav";
+
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
+const fraunces = Fraunces({ subsets: ["latin"], variable: "--font-fraunces" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://orbica.space"),
@@ -41,7 +45,7 @@ const NAV = [
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="antialiased">
+      <body className={`antialiased ${inter.variable} ${fraunces.variable} font-sans`}>
         {/* Fixed, transparent header that floats over the hero */}
         <header className="fixed top-0 inset-x-0 z-50">
           <nav className="mx-auto max-w-[1400px] flex items-center justify-between px-6 lg:px-10 h-16">

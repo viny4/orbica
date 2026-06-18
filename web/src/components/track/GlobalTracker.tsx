@@ -386,8 +386,8 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }
 }
 
 // Orbit path + glowing marker for the tracked satellite, propagated client-side.
-function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass }: {
-  norad: number; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void;
+function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass, viewMode }: {
+  norad: number; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void; viewMode: "orbit" | "sky";
 }) {
   const marker = useRef<THREE.Object3D>(null);
   const glow = useRef<THREE.Mesh>(null);
@@ -482,16 +482,10 @@ function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTeleme
   return (
     <>
       {orbit.length > 1 && <Line points={orbit} color="#7df9ff" lineWidth={2} transparent opacity={0.85} />}
-      <mesh ref={glow}><sphereGeometry args={[0.07, 16, 16]} /><meshBasicMaterial color="#7df9ff" transparent opacity={0.3} /></mesh>
-      {norad === 25544 ? (
-        <group ref={marker as any}>
-          <ISSModel />
-        </group>
-      ) : (
-        <group ref={marker as any}>
-          <ProceduralSatelliteModel />
-        </group>
-      )}
+      <mesh ref={glow}><sphereGeometry args={[viewMode === "sky" ? 0.005 : 0.07, 16, 16]} /><meshBasicMaterial color="#7df9ff" transparent opacity={0.3} /></mesh>
+      <group ref={marker as any}>
+        {viewMode === "orbit" && (norad === 25544 ? <ISSModel /> : <ProceduralSatelliteModel />)}
+      </group>
     </>
   );
 }
@@ -744,11 +738,7 @@ export default function GlobalTracker() {
               </div>
             ) : (
               <div className="space-y-4 font-mono text-[10px] text-white/60">
-                <div className="flex justify-between items-center mb-3">
-                   <button onClick={() => setViewMode(v => v === "orbit" ? "sky" : "orbit")} className={`w-full py-1.5 border tracking-widest uppercase transition-colors ${viewMode === "sky" ? "bg-emerald-500/20 border-emerald-500/50 text-emerald-400" : "border-white/10 text-white/50 hover:bg-white/5 hover:text-white"}`}>
-                     {viewMode === "sky" ? "Exit Sky View" : "Enter Sky View"}
-                   </button>
-                </div>
+
                 <div className="flex justify-between border-b border-white/5 pb-2">
                   <span>GPS COORDS:</span>
                   <div className="text-right">
@@ -797,11 +787,11 @@ export default function GlobalTracker() {
             <directionalLight position={sun} intensity={2} />
             <Suspense fallback={<Html center>Loading globe…</Html>}>
               <Stars radius={90} depth={50} count={4000} factor={4} fade />
-              <Earth spin={false} />
-              <CountryLabels />
+              {viewMode === "orbit" && <Earth spin={false} />}
+              {viewMode === "orbit" && <CountryLabels />}
               {userCoords && <UserLocationMarker lat={userCoords.lat} lng={userCoords.lng} />}
               <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} showMesh={showMesh} onPick={(p) => track(p.norad_id)} />
-              {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} />}
+              {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} viewMode={viewMode} />}
               {tracked && telemetry && (
                 <Footprint
                   lat={telemetry.lat}
@@ -814,6 +804,18 @@ export default function GlobalTracker() {
             </Suspense>
             <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked && viewMode === "orbit"} autoRotateSpeed={0.18} enabled={viewMode === "orbit"} />
           </Canvas>
+        )}
+
+        {/* Floating Sky View Toggle */}
+        {userCoords && (
+          <div className="absolute top-4 right-4 z-10">
+            <button 
+              onClick={() => setViewMode(v => v === "orbit" ? "sky" : "orbit")} 
+              className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "sky" ? "bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-emerald-500/20" : "bg-black/50 border-white/20 text-white/70 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
+            >
+              {viewMode === "sky" ? "Exit Sky View" : "🔭 Enter Sky View"}
+            </button>
+          </div>
         )}
 
         {/* search-to-track — sits below the stats toggle on mobile to avoid overlap */}
