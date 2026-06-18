@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: { callbackUrl?: string };
+  searchParams: { callbackUrl?: string; error?: string };
 }) {
   const callbackUrl = searchParams.callbackUrl || "/sync-logs";
 
