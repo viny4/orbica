@@ -1,4 +1,6 @@
 import Link from "next/link";
+export const runtime = "edge";
+
 import { api } from "@/lib/api";
 import { EmptyState, safe } from "@/components/EmptyState";
 import { PageHeader } from "@/components/ui";

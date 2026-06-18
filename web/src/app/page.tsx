@@ -1,3 +1,4 @@
+export const runtime = "edge";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { safe } from "@/components/EmptyState";

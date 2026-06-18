@@ -1,3 +1,4 @@
+export const runtime = "edge";
 import { api } from "@/lib/api";
 import { PageHeader } from "@/components/ui";
 import { safe } from "@/components/EmptyState";

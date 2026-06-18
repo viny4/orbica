@@ -1,3 +1,4 @@
+export const runtime = "edge";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
