@@ -37,7 +37,7 @@ export default function SatelliteVisual({
       {mode === "orbit" && hasTle && (
         <OrbitViewer3D name={name} line1={line1!} line2={line2!} />
       )}
-      {mode === "model" && <SatelliteModel3D spec={{ purpose, orbitType }} />}
+      {mode === "model" && <SatelliteModel3D spec={{ purpose, orbitType, name }} />}
       {mode === "photo" && imageUrl && (
         <div className="relative w-full aspect-square overflow-hidden border border-white/10 bg-black">
           {/* eslint-disable-next-line @next/next/no-img-element */}

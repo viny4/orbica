@@ -73,11 +73,24 @@ func (h *Handlers) Constellation(c *fiber.Ctx) error {
 	return h.queryJSON(c, "[]", `
 		SELECT json_agg(row_to_json(s) ORDER BY s.launch_date)
 		FROM (
-			SELECT id, name, norad_id, orbit_type, status, launch_date,
+			SELECT id, slug, name, norad_id, orbit_type, status, launch_date,
 			       altitude_periapsis_km, altitude_apoapsis_km, inclination_deg
 			FROM satellites
 			WHERE constellation ILIKE $1
 		) s`, name)
+}
+
+// ListConstellations returns a list of all constellations and their satellite counts.
+func (h *Handlers) ListConstellations(c *fiber.Ctx) error {
+	return h.queryJSON(c, "[]", `
+		SELECT json_agg(row_to_json(t))
+		FROM (
+			SELECT constellation AS name, COUNT(*) AS count
+			FROM satellites
+			WHERE constellation IS NOT NULL AND constellation != ''
+			GROUP BY constellation
+			ORDER BY count DESC
+		) t`)
 }
 
 // Search runs a simple cross-entity ILIKE search. Phase 2 swaps this for
@@ -156,4 +169,34 @@ func (h *Handlers) Leaderboard(c *fiber.Ctx) error {
 		return fail(c, fiber.StatusBadRequest, "by must be country|agency|decade")
 	}
 	return h.queryJSON(c, "[]", sql)
+}
+
+// ListSyncLogs returns recent database synchronization audit logs.
+func (h *Handlers) ListSyncLogs(c *fiber.Ctx) error {
+	limit := clampInt(c.QueryInt("limit", 50), 1, 200)
+	offset := clampInt(c.QueryInt("offset", 0), 0, 1000000)
+	query := c.Query("query", "")
+	status := c.Query("status", "all")
+
+	sql := `
+		WITH filtered AS (
+			SELECT id, timestamp, job_name, status, records_added, records_updated, details
+			FROM sync_logs
+			WHERE ($3::text = '' OR job_name ILIKE '%' || $3 || '%' OR details::text ILIKE '%' || $3 || '%')
+			  AND ($4::text = 'all' OR status = $4)
+		),
+		counted AS (
+			SELECT count(*) AS total FROM filtered
+		),
+		paginated AS (
+			SELECT * FROM filtered
+			ORDER BY timestamp DESC
+			LIMIT $1 OFFSET $2
+		)
+		SELECT json_build_object(
+			'total', (SELECT total FROM counted),
+			'data', COALESCE((SELECT json_agg(row_to_json(p)) FROM paginated p), '[]'::json)
+		)
+	`
+	return h.queryJSON(c, `{"total": 0, "data": []}`, sql, limit, offset, query, status)
 }

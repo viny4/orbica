@@ -52,6 +52,7 @@ export interface Rocket {
   id: string;
   slug: string;
   name: string;
+  variant?: string | null;
   status: string | null;
   height_m: string | null;
   diameter_m: string | null;
@@ -80,6 +81,9 @@ export interface Satellite {
   launch_date: string | null;
   launch_year: number | null;
   image_url: string | null;
+  altitude_periapsis_km?: string | number | null;
+  altitude_apoapsis_km?: string | number | null;
+  inclination_deg?: string | number | null;
 }
 
 export interface Article {
@@ -90,6 +94,16 @@ export interface Article {
   image_url: string | null;
   news_site: string | null;
   published_at: string | null;
+}
+
+export interface SyncLog {
+  id: string;
+  timestamp: string;
+  job_name: string;
+  status: string;
+  records_added: number;
+  records_updated: number;
+  details: Record<string, any> | null;
 }
 
 export const api = {
@@ -111,6 +125,9 @@ export const api = {
   satellites: (q = "") =>
     get<Satellite[]>(`/satellites${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   satellite: (id: string) => get<Record<string, unknown>>(`/satellites/${id}`),
+  constellation: (name: string) => get<Satellite[]>(`/constellations/${encodeURIComponent(name)}`),
+  constellations: () => get<{ name: string; count: number }[]>("/constellations"),
+  syncLogs: (limit = 50) => get<SyncLog[]>(`/sync-logs?limit=${limit}`, 5),
 };
 
 export function getLaunchTitle(

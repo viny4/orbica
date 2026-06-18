@@ -18,18 +18,19 @@ log = logging.getLogger("articles")
 CONSTELLATIONS = ["Starlink", "OneWeb", "Iridium", "GPS", "Galileo", "Beidou", "Globalstar", "Kuiper"]
 
 
-def _upsert(cur, a: dict) -> str:
+def _upsert(cur, a: dict) -> tuple[str, bool]:
     cur.execute(
         """
         INSERT INTO articles (snapi_id, title, url, summary, image_url, news_site, published_at)
         VALUES (%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT (snapi_id) DO UPDATE SET title = EXCLUDED.title, summary = EXCLUDED.summary
-        RETURNING id
+        RETURNING id, (xmax = 0) AS inserted
         """,
         (a["id"], a["title"], a["url"], a.get("summary"), a.get("image_url"),
          a.get("news_site"), a.get("published_at")),
     )
-    return str(cur.fetchone()["id"])
+    res = cur.fetchone()
+    return str(res["id"]), bool(res["inserted"])
 
 
 def _link(cur, article_id: str, etype: str, ekey: str) -> None:
@@ -47,8 +48,12 @@ def _simplify(name: str) -> str:
     return name.strip()
 
 
-def ingest() -> None:
-    n_art = n_link = 0
+def ingest() -> tuple[int, int, dict]:
+    n_added = 0
+    n_updated = 0
+    n_link = 0
+    added_titles = []
+    updated_titles = []
     with SnapiClient() as sn, cursor() as cur:
         cur.execute(
             "SELECT id, name FROM rocket_vehicles WHERE total_launches > 0 "
@@ -58,9 +63,14 @@ def ingest() -> None:
         for r in rockets:
             try:
                 for a in sn.search(_simplify(r["name"]), limit=5):
-                    aid = _upsert(cur, a)
+                    aid, inserted = _upsert(cur, a)
                     _link(cur, aid, "rocket", str(r["id"]))
-                    n_art += 1
+                    if inserted:
+                        n_added += 1
+                        added_titles.append(a["title"])
+                    else:
+                        n_updated += 1
+                        updated_titles.append(a["title"])
                     n_link += 1
             except Exception as exc:
                 log.warning("rocket %s news failed: %s", r["name"], exc)
@@ -68,8 +78,14 @@ def ingest() -> None:
         for c in CONSTELLATIONS:
             try:
                 for a in sn.search(c, limit=8):
-                    aid = _upsert(cur, a)
+                    aid, inserted = _upsert(cur, a)
                     _link(cur, aid, "constellation", c)
+                    if inserted:
+                        n_added += 1
+                        added_titles.append(a["title"])
+                    else:
+                        n_updated += 1
+                        updated_titles.append(a["title"])
                     n_link += 1
             except Exception as exc:
                 log.warning("constellation %s news failed: %s", c, exc)
@@ -77,12 +93,22 @@ def ingest() -> None:
         # General latest feed (homepage / fallback).
         try:
             for a in sn.latest(limit=40):
-                aid = _upsert(cur, a)
+                aid, inserted = _upsert(cur, a)
                 _link(cur, aid, "latest", "latest")
+                if inserted:
+                    n_added += 1
+                    added_titles.append(a["title"])
+                else:
+                    n_updated += 1
+                    updated_titles.append(a["title"])
         except Exception as exc:
             log.warning("latest feed failed: %s", exc)
 
     log.info("articles ingested (~%d links)", n_link)
+    # Deduplicate titles to keep log compact
+    added_titles = list(set(added_titles))
+    updated_titles = list(set(updated_titles))
+    return n_added, n_updated, {"added_items": added_titles, "updated_items": updated_titles, "links_created": n_link}
 
 
 if __name__ == "__main__":

@@ -32,7 +32,7 @@ def _sync_tle() -> None:
 
 
 def _sync_satellites() -> None:
-    for group in ("active", "starlink", "gps-ops", "galileo", "oneweb"):
+    for group in ("active", "starlink", "gps-ops", "galileo", "oneweb", "glo-ops", "iridium-NEXT", "globalstar", "orbcomm", "beidou", "kuiper"):
         satellites_seed.seed_group(group)
     satellites_seed.link_satellites_to_launches()
     refresh_year_summary()

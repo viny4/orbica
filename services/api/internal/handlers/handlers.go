@@ -49,10 +49,12 @@ func (h *Handlers) Register(app *fiber.App) {
 	v1.Get("/launches/upcoming", h.UpcomingLaunches)
 	v1.Get("/launches/:id", h.GetLaunch)
 	v1.Get("/on-this-day", h.OnThisDay)
+	v1.Get("/constellations", h.ListConstellations)
 	v1.Get("/constellations/:name", h.Constellation)
 	v1.Get("/search", h.Search)
 	v1.Get("/stats/leaderboard", h.Leaderboard)
 	v1.Get("/stats/overview", h.StatsOverview)
+	v1.Get("/sync-logs", h.ListSyncLogs)
 }
 
 // fail writes a JSON error with the given status.

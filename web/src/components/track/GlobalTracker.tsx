@@ -9,6 +9,10 @@ import { Earth } from "@/components/three/Earth";
 import { latLngAltToVec3, orbitPath, propagateTLE, type GeoPos } from "@/components/three/geo";
 import { useInView } from "@/components/three/useInView";
 import { Footprint } from "@/components/three/Footprint";
+import ISSHub from "./ISSHub";
+import ISSModel from "@/components/three/ISSModel";
+import ProceduralSatelliteModel from "@/components/three/ProceduralSatelliteModel";
+import { CountryLabels } from "@/components/three/CountryLabels";
 
 interface LivePos {
   norad_id: number;
@@ -125,6 +129,36 @@ function sunDirection(now: Date): [number, number, number] {
   return [x * 60, y * 60, z * 60];
 }
 
+function UserLocationMarker({ lat, lng }: { lat: number; lng: number }) {
+  const ref = useRef<THREE.Mesh>(null);
+  const pos = useMemo(() => latLngAltToVec3(lat, lng, 0), [lat, lng]);
+
+  useFrame(({ clock }) => {
+    if (ref.current) {
+      const scale = 1.0 + Math.sin(clock.getElapsedTime() * 5) * 0.15;
+      ref.current.scale.set(scale, scale, scale);
+    }
+  });
+
+  return (
+    <group position={pos}>
+      <mesh>
+        <sphereGeometry args={[0.012, 16, 16]} />
+        <meshBasicMaterial color="#10b981" />
+      </mesh>
+      <mesh ref={ref}>
+        <ringGeometry args={[0.02, 0.04, 32]} />
+        <meshBasicMaterial color="#10b981" transparent opacity={0.4} side={THREE.DoubleSide} />
+      </mesh>
+      <Html distanceFactor={5} center>
+        <div className="text-[8px] font-mono tracking-widest text-emerald-400 bg-black/80 px-1.5 py-0.5 border border-emerald-500/20 pointer-events-none uppercase whitespace-nowrap select-none">
+          You
+        </div>
+      </Html>
+    </group>
+  );
+}
+
 // ── cloud ────────────────────────────────────────────────────────────────────
 function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
   positions: LivePos[]; meta: Map<number, Meta>; mode: ColorMode; filter: string | null; dim: boolean;
@@ -220,7 +254,7 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, onPick }: {
 function TrackedSatellite({ norad, line1, line2, offsetMin, onTelemetry }: {
   norad: number; line1: string; line2: string; offsetMin: number; onTelemetry: (p: GeoPos) => void;
 }) {
-  const marker = useRef<THREE.Mesh>(null);
+  const marker = useRef<THREE.Object3D>(null);
   const glow = useRef<THREE.Mesh>(null);
   const acc = useRef(99);
   const orbit = useMemo(() => orbitPath(line1, line2, 240), [line1, line2]);
@@ -278,7 +312,15 @@ function TrackedSatellite({ norad, line1, line2, offsetMin, onTelemetry }: {
     <>
       {orbit.length > 1 && <Line points={orbit} color="#7df9ff" lineWidth={2} transparent opacity={0.85} />}
       <mesh ref={glow}><sphereGeometry args={[0.07, 16, 16]} /><meshBasicMaterial color="#7df9ff" transparent opacity={0.3} /></mesh>
-      <mesh ref={marker}><sphereGeometry args={[0.032, 16, 16]} /><meshBasicMaterial color="#ffffff" /></mesh>
+      {norad === 25544 ? (
+        <group ref={marker as any}>
+          <ISSModel />
+        </group>
+      ) : (
+        <group ref={marker as any}>
+          <ProceduralSatelliteModel />
+        </group>
+      )}
     </>
   );
 }
@@ -333,6 +375,67 @@ export default function GlobalTracker() {
   useEffect(() => { setOffset(offsetMin * 60); }, [offsetMin, setOffset]);
   const shownTime = useMemo(() => new Date(clock + offsetMin * 60000), [clock, offsetMin]);
   const sun = useMemo(() => sunDirection(shownTime), [shownTime]);
+
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locLoading, setLocLoading] = useState(false);
+  const [locError, setLocError] = useState<string | null>(null);
+  const [nearbySats, setNearbySats] = useState<{ norad_id: number; name: string; distance: number; lat: number; lng: number; alt: number }[]>([]);
+
+  const handleShareLocation = () => {
+    if (!navigator.geolocation) {
+      setLocError("GPS not supported");
+      return;
+    }
+    setLocLoading(true);
+    setLocError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setLocLoading(false);
+      },
+      (err) => {
+        setLocError("Location access denied");
+        setLocLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
+  useEffect(() => {
+    if (!userCoords || !positions.length) return;
+    const userR = 6371;
+    const userPhi = (90 - userCoords.lat) * (Math.PI / 180);
+    const userTheta = (userCoords.lng + 180) * (Math.PI / 180);
+    const userX = -(userR * Math.sin(userPhi) * Math.cos(userTheta));
+    const userY = userR * Math.cos(userPhi);
+    const userZ = userR * Math.sin(userPhi) * Math.sin(userTheta);
+
+    const calculated = positions.map((p) => {
+      const satR = 6371 + p.altitude_km;
+      const satPhi = (90 - p.lat) * (Math.PI / 180);
+      const satTheta = (p.lng + 180) * (Math.PI / 180);
+      const satX = -(satR * Math.sin(satPhi) * Math.cos(satTheta));
+      const satY = satR * Math.cos(satPhi);
+      const satZ = satR * Math.sin(satPhi) * Math.sin(satTheta);
+
+      const dx = satX - userX;
+      const dy = satY - userY;
+      const dz = satZ - userZ;
+      const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+      return {
+        norad_id: p.norad_id,
+        name: p.name,
+        distance: dist,
+        lat: p.lat,
+        lng: p.lng,
+        alt: p.altitude_km,
+      };
+    });
+
+    calculated.sort((a, b) => a.distance - b.distance);
+    setNearbySats(calculated.slice(0, 8));
+  }, [userCoords, positions]);
 
   // search index (name → norad/slug) built once from metadata
   const index = useMemo(
@@ -397,6 +500,56 @@ export default function GlobalTracker() {
           </div>
           <div><div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2">Altitude distribution</div><Bars data={altHist} /></div>
           <div><div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2">Top operators</div><Bars data={country} /></div>
+
+          {/* Geolocation Card */}
+          <div className="border border-white/10 bg-white/[0.015] p-4">
+            <div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2.5 flex justify-between items-center">
+              <span>My Location</span>
+              {userCoords && <span className="text-emerald-400 font-mono text-[9px] uppercase">Active</span>}
+            </div>
+            
+            {!userCoords ? (
+              <div className="space-y-2">
+                <p className="text-[11px] text-white/45 font-light leading-relaxed">
+                  Enable location access to show satellites passing near your coordinates in real time.
+                </p>
+                <button
+                  onClick={handleShareLocation}
+                  disabled={locLoading}
+                  className="w-full text-center text-[10px] font-mono uppercase tracking-widest py-2 bg-white/[0.04] border border-white/10 hover:bg-white/10 hover:border-white/30 text-white transition-colors"
+                >
+                  {locLoading ? "Accessing GPS..." : "Share My Location"}
+                </button>
+                {locError && <p className="text-[10px] text-red-400 font-mono">{locError}</p>}
+              </div>
+            ) : (
+              <div className="space-y-4 font-mono text-[10px] text-white/60">
+                <div className="flex justify-between border-b border-white/5 pb-2">
+                  <span>GPS COORDS:</span>
+                  <span className="text-white">{userCoords.lat.toFixed(3)}°N, {userCoords.lng.toFixed(3)}°E</span>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="text-[9px] tracking-wider text-white/30 uppercase">Closest Overhead</div>
+                  <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
+                    {nearbySats.map((sat) => (
+                      <button
+                        key={sat.norad_id}
+                        onClick={() => track(sat.norad_id)}
+                        className="w-full text-left bg-white/[0.01] hover:bg-white/[0.04] border border-white/5 p-2 flex justify-between items-center transition-colors group"
+                      >
+                        <span className="truncate text-white/70 group-hover:text-[var(--color-space-accent-2)] transition-colors pr-2">{sat.name}</span>
+                        <span className="text-emerald-400 shrink-0 font-semibold">{Math.round(sat.distance).toLocaleString()} km</span>
+                      </button>
+                    ))}
+                    {nearbySats.length === 0 && (
+                      <div className="text-[10px] text-white/30 italic">No satellites in range</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </aside>
       )}
 
@@ -414,6 +567,8 @@ export default function GlobalTracker() {
             <Suspense fallback={<Html center>Loading globe…</Html>}>
               <Stars radius={90} depth={50} count={4000} factor={4} fade />
               <Earth spin={false} />
+              <CountryLabels />
+              {userCoords && <UserLocationMarker lat={userCoords.lat} lng={userCoords.lng} />}
               <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} onPick={(p) => track(p.norad_id)} />
               {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} onTelemetry={setTelemetry} />}
               {tracked && telemetry && (
@@ -451,20 +606,28 @@ export default function GlobalTracker() {
 
         {/* tracked telemetry HUD */}
         {tracked && (
-          <div className="absolute bottom-16 left-3 bg-black/70 backdrop-blur border border-[var(--color-space-accent-2)]/40 p-4 w-64">
-            <div className="flex items-start justify-between gap-3">
-              <span className="text-[var(--color-space-accent-2)] font-semibold text-sm">{tracked.name}</span>
-              <button onClick={() => { setTracked(null); setTelemetry(null); }} className="text-white/40 hover:text-white text-xs">✕</button>
-            </div>
-            {telemetry ? (
-              <div className="mt-2 space-y-0.5 text-xs font-mono text-white/65">
-                <div>lat {telemetry.lat.toFixed(2)}°  lng {telemetry.lng.toFixed(2)}°</div>
-                <div>alt {telemetry.altKm.toFixed(0)} km</div>
-                <div>vel {telemetry.speedKmS.toFixed(2)} km/s</div>
+          tracked.norad === 25544 ? (
+            <ISSHub
+              velocity={telemetry?.speedKmS ?? 7.66}
+              altitude={telemetry?.altKm ?? 418.5}
+              onClose={() => { setTracked(null); setTelemetry(null); }}
+            />
+          ) : (
+            <div className="absolute bottom-16 left-3 bg-black/70 backdrop-blur border border-[var(--color-space-accent-2)]/40 p-4 w-64">
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-[var(--color-space-accent-2)] font-semibold text-sm">{tracked.name}</span>
+                <button onClick={() => { setTracked(null); setTelemetry(null); }} className="text-white/40 hover:text-white text-xs">✕</button>
               </div>
-            ) : <div className="mt-2 text-xs text-white/40">propagating…</div>}
-            <Link href={`/satellites/${tracked.slug}`} className="inline-block mt-2 text-[11px] tracking-[0.15em] uppercase text-[var(--color-space-accent-2)]/80 hover:text-[var(--color-space-accent-2)]">Details →</Link>
-          </div>
+              {telemetry ? (
+                <div className="mt-2 space-y-0.5 text-xs font-mono text-white/65">
+                  <div>lat {telemetry.lat.toFixed(2)}°  lng {telemetry.lng.toFixed(2)}°</div>
+                  <div>alt {telemetry.altKm.toFixed(0)} km</div>
+                  <div>vel {telemetry.speedKmS.toFixed(2)} km/s</div>
+                </div>
+              ) : <div className="mt-2 text-xs text-white/40">propagating…</div>}
+              <Link href={`/satellites/${tracked.slug}`} className="inline-block mt-2 text-[11px] tracking-[0.15em] uppercase text-[var(--color-space-accent-2)]/80 hover:text-[var(--color-space-accent-2)]">Details →</Link>
+            </div>
+          )
         )}
 
         {/* panel toggle */}

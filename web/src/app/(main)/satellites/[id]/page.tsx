@@ -199,7 +199,17 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
         sat.owner_code
       ),
     ],
-    ["Constellation", sat.constellation],
+    [
+      "Constellation",
+      sat.constellation ? (
+        <Link
+          href={`/constellations/${encodeURIComponent(sat.constellation.toLowerCase())}`}
+          className="text-[var(--color-space-accent-2)] hover:underline"
+        >
+          {sat.constellation}
+        </Link>
+      ) : null,
+    ],
     ["Radar cross-section", sat.rcs_m2 && `${sat.rcs_m2} m²`],
     ["Status", OPS[sat.ops_status] ?? sat.status],
     ["Decay / reentry", fmtDate(sat.reentry_date)],

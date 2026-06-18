@@ -32,28 +32,35 @@ def _lookup_ll2_to_id(table: str) -> dict[int, str]:
     return out
 
 
-def seed_agencies(client: LL2Client) -> dict[int, str]:
+def seed_agencies(client: LL2Client) -> tuple[dict[int, str], int, int, dict]:
     log.info("seeding agencies...")
-    n = 0
+    added_names = []
+    updated_names = []
     for a in client.agencies():
         row = m.agency_row(a)
         if row["ll2_id"] is None:
             continue
         # description + founding_year are Wikipedia-enriched where LL2 is null;
         # keep them enricher-owned so a re-sync can't null them back out.
-        upsert(
+        res = upsert(
             "agencies", row, conflict="ll2_id",
             update_cols=[k for k in row if k not in ("ll2_id", "description", "founding_year")],
+            return_inserted=True,
         )
-        n += 1
-    log.info("agencies upserted: %d", n)
-    return _lookup_ll2_to_id("agencies")
+        _, inserted = res if isinstance(res, tuple) else (res, False)
+        if inserted:
+            added_names.append(row["name"])
+        else:
+            updated_names.append(row["name"])
+    log.info("agencies upserted: added %d, updated %d", len(added_names), len(updated_names))
+    return _lookup_ll2_to_id("agencies"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
 
 
-def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> dict[int, str]:
+def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict[int, str], int, int, dict]:
     log.info("seeding rocket families + vehicles...")
     fam_by_name: dict[str, str] = {}
-    n = 0
+    added_names = []
+    updated_names = []
     for cfg in client.launcher_configs():
         manu_ll2 = (cfg.get("manufacturer") or {}).get("id")
         manufacturer_id = agency_by_ll2.get(manu_ll2)
@@ -70,10 +77,15 @@ def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> dict[int, 
                 # overwrite enriched values with nulls (set on insert only).
                 enricher_owned = {conflict, "description", "country_code"}
                 # Families without an LL2 id dedupe on name.
-                family_id = upsert(
-                    "rocket_families", fam, conflict=conflict,
-                    update_cols=[k for k in fam if k not in enricher_owned],
-                ) if fam.get("ll2_id") else _upsert_family_by_name(fam)
+                if fam.get("ll2_id"):
+                    res = upsert(
+                        "rocket_families", fam, conflict=conflict,
+                        update_cols=[k for k in fam if k not in enricher_owned],
+                        return_inserted=True,
+                    )
+                    family_id, _ = res if isinstance(res, tuple) else (res, False)
+                else:
+                    family_id = _upsert_family_by_name(fam)
                 fam_by_name[fam["name"]] = family_id
 
         veh = m.vehicle_row(cfg, family_id)
@@ -81,13 +93,18 @@ def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> dict[int, 
             continue
         # `description` is enriched from Wikipedia where LL2 is null — don't let a
         # re-sync clobber it. image_url stays updatable (it's CDN-normalised).
-        upsert(
+        res = upsert(
             "rocket_vehicles", veh, conflict="ll2_id",
             update_cols=[k for k in veh if k not in ("ll2_id", "description")],
+            return_inserted=True,
         )
-        n += 1
-    log.info("rocket vehicles upserted: %d", n)
-    return _lookup_ll2_to_id("rocket_vehicles")
+        _, inserted = res if isinstance(res, tuple) else (res, False)
+        if inserted:
+            added_names.append(veh["name"])
+        else:
+            updated_names.append(veh["name"])
+    log.info("rocket vehicles upserted: added %d, updated %d", len(added_names), len(updated_names))
+    return _lookup_ll2_to_id("rocket_vehicles"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
 
 
 def _upsert_family_by_name(fam: dict) -> str | None:
@@ -106,20 +123,26 @@ def _upsert_family_by_name(fam: dict) -> str | None:
         return str(cur.fetchone()["id"])
 
 
-def seed_pads(client: LL2Client, agency_by_ll2: dict[int, str]) -> dict[int, str]:
+def seed_pads(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict[int, str], int, int, dict]:
     log.info("seeding launch sites...")
-    n = 0
+    added_names = []
+    updated_names = []
     for pad in client.pads():
         row = m.pad_row(pad, None)
         if row["ll2_id"] is None:
             continue
-        upsert(
+        res = upsert(
             "launch_sites", row, conflict="ll2_id",
             update_cols=[k for k in row if k != "ll2_id"],
+            return_inserted=True,
         )
-        n += 1
-    log.info("launch sites upserted: %d", n)
-    return _lookup_ll2_to_id("launch_sites")
+        _, inserted = res if isinstance(res, tuple) else (res, False)
+        if inserted:
+            added_names.append(row["name"])
+        else:
+            updated_names.append(row["name"])
+    log.info("launch sites upserted: added %d, updated %d", len(added_names), len(updated_names))
+    return _lookup_ll2_to_id("launch_sites"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
 
 
 def seed_launches(
@@ -128,9 +151,10 @@ def seed_launches(
     agency_by_ll2: dict[int, str],
     site_by_ll2: dict[int, str],
     net_gte: str = "1957-01-01",
-) -> None:
+) -> tuple[int, int, dict]:
     log.info("seeding launches (%s → now)...", net_gte)
-    n = 0
+    added_names = []
+    updated_names = []
     for launch in client.launches(net_gte=net_gte):
         rocket_cfg_id = m.g(launch, "rocket", "configuration", "id")
         agency_id_ll2 = m.g(launch, "launch_service_provider", "id")
@@ -144,14 +168,20 @@ def seed_launches(
         )
         if row["ll2_uuid"] is None:
             continue
-        upsert(
+        res = upsert(
             "launch_events", row, conflict="ll2_uuid",
             update_cols=[k for k in row if k != "ll2_uuid"],
+            return_inserted=True,
         )
-        n += 1
-        if n % 500 == 0:
-            log.info("  ...%d launches", n)
-    log.info("launches upserted: %d", n)
+        _, inserted = res if isinstance(res, tuple) else (res, False)
+        if inserted:
+            added_names.append(row["name"])
+        else:
+            updated_names.append(row["name"])
+        if (len(added_names) + len(updated_names)) % 500 == 0:
+            log.info("  ...%d launches", (len(added_names) + len(updated_names)))
+    log.info("launches upserted: added %d, updated %d", len(added_names), len(updated_names))
+    return len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
 
 
 def seed_reference_only() -> None:
@@ -159,7 +189,7 @@ def seed_reference_only() -> None:
     from src.config import settings
 
     with LL2Client(base_url=settings.ll2_dev_base_url) as ref:
-        agency_by_ll2 = seed_agencies(ref)
+        agency_by_ll2, _, _, _ = seed_agencies(ref)
         seed_rockets(ref, agency_by_ll2)
         seed_pads(ref, agency_by_ll2)
     log.info("reference seed complete (agencies/rockets/pads).")
@@ -169,21 +199,34 @@ def main(
     reference_from_dev: bool = True,
     launches_net_gte: str = "1957-01-01",
     seed_engines: bool = False,
-) -> None:
+) -> dict[str, Any]:
     from src.config import settings
+
+    stats = {
+        "agencies": {"added": 0, "updated": 0, "details": {}},
+        "rockets": {"added": 0, "updated": 0, "details": {}},
+        "launch_sites": {"added": 0, "updated": 0, "details": {}},
+        "launches": {"added": 0, "updated": 0, "details": {}},
+    }
 
     # Reference data (agencies/rockets/pads) is complete on the dev cache and
     # not rate-limited; launches need the full production history.
     ref_url = settings.ll2_dev_base_url if reference_from_dev else settings.ll2_base_url
     with LL2Client(base_url=ref_url) as ref:
-        agency_by_ll2 = seed_agencies(ref)
-        rocket_by_ll2 = seed_rockets(ref, agency_by_ll2)
-        site_by_ll2 = seed_pads(ref, agency_by_ll2)
+        agency_by_ll2, ag_add, ag_upd, ag_det = seed_agencies(ref)
+        stats["agencies"] = {"added": ag_add, "updated": ag_upd, "details": ag_det}
+        
+        rocket_by_ll2, r_add, r_upd, r_det = seed_rockets(ref, agency_by_ll2)
+        stats["rockets"] = {"added": r_add, "updated": r_upd, "details": r_det}
+        
+        site_by_ll2, s_add, s_upd, s_det = seed_pads(ref, agency_by_ll2)
+        stats["launch_sites"] = {"added": s_add, "updated": s_upd, "details": s_det}
 
     # `launches_net_gte` lets a recurring sync pull only a recent window
     # (recent + upcoming) instead of re-scanning the whole catalogue.
     with LL2Client(base_url=settings.ll2_base_url) as prod:
-        seed_launches(prod, rocket_by_ll2, agency_by_ll2, site_by_ll2, net_gte=launches_net_gte)
+        l_add, l_upd, l_det = seed_launches(prod, rocket_by_ll2, agency_by_ll2, site_by_ll2, net_gte=launches_net_gte)
+        stats["launches"] = {"added": l_add, "updated": l_upd, "details": l_det}
 
     # Curated engine catalogue + vehicle mapping. One-time data (doesn't change),
     # so it's only run on a full seed — the recurring cron leaves seed_engines off.
@@ -201,6 +244,8 @@ def main(
         with cursor() as cur:
             cur.execute("REFRESH MATERIALIZED VIEW year_summary")
     log.info("historical seed complete.")
+    
+    return stats
 
 
 if __name__ == "__main__":

@@ -25,10 +25,15 @@ CONSTELLATION = {
     "galileo": "Galileo",
     "oneweb": "OneWeb",
     "glo-ops": "GLONASS",
+    "iridium-NEXT": "Iridium",
+    "globalstar": "Globalstar",
+    "orbcomm": "OrbComm",
+    "beidou": "Beidou",
+    "kuiper": "Kuiper",
 }
 
 
-def seed_group(group: str = "active") -> None:
+def seed_group(group: str = "active") -> tuple[int, int, dict]:
     constellation = CONSTELLATION.get(group)
     captured = datetime.now(timezone.utc)
     
@@ -38,7 +43,7 @@ def seed_group(group: str = "active") -> None:
     log.info("fetched %d TLEs for group %s. Bulk upserting satellites...", len(tles), group)
     
     if not tles:
-        return
+        return 0, 0, {"added_items": [], "updated_items": [], "tle_snapshots_added": 0, "total_fetched": 0}
         
     sat_rows = [
         (tle.name, tle.norad_id, constellation, "active")
@@ -46,19 +51,28 @@ def seed_group(group: str = "active") -> None:
     ]
     
     with cursor() as cur:
+        norad_ids = [tle.norad_id for tle in tles]
+        cur.execute(
+            "SELECT norad_id FROM satellites WHERE norad_id = ANY(%s)",
+            [norad_ids]
+        )
+        existing = {row["norad_id"] for row in cur.fetchall()}
+        
+        added_names = [tle.name for tle in tles if tle.norad_id not in existing]
+        updated_names = [tle.name for tle in tles if tle.norad_id in existing]
+        
         cur.executemany(
             """
             INSERT INTO satellites (name, norad_id, constellation, status)
             VALUES (%s, %s, %s, %s)
             ON CONFLICT (norad_id) DO UPDATE SET
               name = EXCLUDED.name,
-              constellation = EXCLUDED.constellation,
+              constellation = COALESCE(EXCLUDED.constellation, satellites.constellation),
               status = EXCLUDED.status
             """,
             sat_rows
         )
         
-        norad_ids = [tle.norad_id for tle in tles]
         cur.execute(
             "SELECT id, norad_id FROM satellites WHERE norad_id = ANY(%s)",
             [norad_ids]
@@ -81,6 +95,12 @@ def seed_group(group: str = "active") -> None:
         )
         
     log.info("group %s: %d satellites + TLEs upserted", group, len(tles))
+    return len(added_names), len(updated_names), {
+        "added_items": added_names,
+        "updated_items": updated_names,
+        "tle_snapshots_added": len(tle_rows),
+        "total_fetched": len(tles)
+    }
 
 
 def _upsert_satellite(tle: TLE, constellation: str | None) -> str:

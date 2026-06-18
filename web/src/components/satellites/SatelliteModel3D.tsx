@@ -4,10 +4,12 @@ import { Canvas } from "@react-three/fiber";
 import { OrbitControls, Html } from "@react-three/drei";
 import { Suspense, useMemo } from "react";
 import { useInView } from "@/components/three/useInView";
+import ISSModel from "@/components/three/ISSModel";
 
 export interface SatModelSpec {
   purpose?: string | null;
   orbitType?: string | null;
+  name?: string | null;
 }
 
 // Palette + body feature derived from the spacecraft's purpose.
@@ -102,6 +104,8 @@ function Satellite({ purpose }: { purpose?: string | null }) {
 
 export default function SatelliteModel3D({ spec }: { spec: SatModelSpec }) {
   const { ref, inView, armed } = useInView<HTMLDivElement>();
+  const isISS = (spec.name || "").toLowerCase().includes("iss") || (spec.name || "").toLowerCase().includes("zarya");
+
   return (
     <div
       ref={ref}
@@ -114,7 +118,13 @@ export default function SatelliteModel3D({ spec }: { spec: SatModelSpec }) {
           <directionalLight position={[6, 8, 5]} intensity={1.5} />
           <directionalLight position={[-5, -2, -4]} intensity={0.4} color="#7df9ff" />
           <Suspense fallback={<Html center>Loading…</Html>}>
-            <Satellite purpose={spec.purpose} />
+            {isISS ? (
+              <group scale={[22, 22, 22]}>
+                <ISSModel />
+              </group>
+            ) : (
+              <Satellite purpose={spec.purpose} />
+            )}
           </Suspense>
           <OrbitControls enablePan={false} minDistance={3} maxDistance={12} autoRotate autoRotateSpeed={0.8} />
         </Canvas>

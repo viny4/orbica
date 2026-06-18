@@ -26,36 +26,64 @@ def cursor():
             yield cur
 
 
-def upsert(table: str, row: dict[str, Any], conflict: str, update_cols: Iterable[str]) -> str | None:
+def upsert(table: str, row: dict[str, Any], conflict: str, update_cols: Iterable[str], return_inserted: bool = False) -> str | None | tuple[str | None, bool]:
     """Insert `row` into `table`, updating `update_cols` on conflict with `conflict`.
 
     Returns the row id (UUID as text) when the table has an `id` column.
+    If return_inserted is True, returns a tuple (row_id, was_newly_inserted).
     """
     cols = list(row.keys())
     placeholders = ", ".join(["%s"] * len(cols))
     col_list = ", ".join(cols)
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
-    sql = (
-        f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
-        f"ON CONFLICT ({conflict}) DO UPDATE SET {updates} "
-        f"RETURNING id"
-    )
+    
+    if return_inserted:
+        sql = (
+            f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
+            f"ON CONFLICT ({conflict}) DO UPDATE SET {updates} "
+            f"RETURNING id, (xmax = 0) AS inserted"
+        )
+    else:
+        sql = (
+            f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
+            f"ON CONFLICT ({conflict}) DO UPDATE SET {updates} "
+            f"RETURNING id"
+        )
+        
     with cursor() as cur:
         try:
             cur.execute(sql, [row[c] for c in cols])
             result = cur.fetchone()
-            return str(result["id"]) if result and "id" in result else None
+            if result:
+                id_val = str(result["id"]) if "id" in result else None
+                if return_inserted:
+                    inserted_val = bool(result.get("inserted", False))
+                    return id_val, inserted_val
+                return id_val
+            return (None, False) if return_inserted else None
         except Exception:
             # Tables without an id (e.g. tle_snapshots) won't RETURN id.
             cur.connection.rollback()
-            sql_noret = (
-                f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
-                f"ON CONFLICT ({conflict}) DO UPDATE SET {updates}"
-            )
-            cur.execute(sql_noret, [row[c] for c in cols])
-            return None
+            if return_inserted:
+                sql_noret = (
+                    f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
+                    f"ON CONFLICT ({conflict}) DO UPDATE SET {updates} "
+                    f"RETURNING (xmax = 0) AS inserted"
+                )
+                cur.execute(sql_noret, [row[c] for c in cols])
+                result = cur.fetchone()
+                inserted_val = bool(result.get("inserted", False)) if result else False
+                return None, inserted_val
+            else:
+                sql_noret = (
+                    f"INSERT INTO {table} ({col_list}) VALUES ({placeholders}) "
+                    f"ON CONFLICT ({conflict}) DO UPDATE SET {updates}"
+                )
+                cur.execute(sql_noret, [row[c] for c in cols])
+                return None
 
 
 def refresh_year_summary() -> None:
     with cursor() as cur:
         cur.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY year_summary")
+
