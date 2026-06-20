@@ -63,3 +63,18 @@ export function orbitPath(line1: string, line2: string, samples = 180): Vec3[] {
   }
   return pts;
 }
+
+// The ground track: the sub-satellite point traced on the Earth's surface over
+// the next `minutes`. Same propagation as orbitPath but projected to ground
+// level (a small lift avoids z-fighting with the globe texture). In 3D the
+// antimeridian seam is a non-issue — consecutive points are physically adjacent.
+export function groundTrack(line1: string, line2: string, minutes = 95, samples = 180): Vec3[] {
+  const now = Date.now();
+  const pts: Vec3[] = [];
+  for (let i = 0; i <= samples; i++) {
+    const t = new Date(now + (minutes * 60 * 1000 * i) / samples);
+    const p = propagateTLE(line1, line2, t);
+    if (p) pts.push(latLngAltToVec3(p.lat, p.lng, 30));
+  }
+  return pts;
+}

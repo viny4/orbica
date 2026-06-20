@@ -42,3 +42,7 @@ data/seeds/.launch_backfill_offset
 
 # Vercel / Cloudflare
 web/.vercel/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/playwright/.cache/

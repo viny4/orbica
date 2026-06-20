@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Earth } from "@/components/three/Earth";
-import { latLngAltToVec3, orbitPath, propagateTLE, type GeoPos } from "@/components/three/geo";
+import { latLngAltToVec3, orbitPath, groundTrack, propagateTLE, type GeoPos } from "@/components/three/geo";
 import { useInView } from "@/components/three/useInView";
 import { Footprint } from "@/components/three/Footprint";
 import ISSHub from "./ISSHub";
@@ -157,6 +157,27 @@ function SkyCamera({ userCoords, active }: { userCoords: {lat: number, lng: numb
 }
 
 
+
+// Ride-along: lock the camera just outside the tracked satellite, looking back
+// at Earth, so the planet rotates beneath you as the satellite orbits. Re-derives
+// the position every frame from the TLE (respecting the time-machine offset).
+function RideAlongCamera({ line1, line2, offsetMin, active }: {
+  line1: string; line2: string; offsetMin: number; active: boolean;
+}) {
+  const { camera } = useThree();
+  useFrame(() => {
+    if (!active) return;
+    const p = propagateTLE(line1, line2, new Date(Date.now() + offsetMin * 60000));
+    if (!p) return;
+    const sat = new THREE.Vector3(...latLngAltToVec3(p.lat, p.lng, p.altKm));
+    // Sit a little above the spacecraft (away from Earth) and look at the planet.
+    const outward = sat.clone().normalize();
+    camera.up.set(0, 1, 0);
+    camera.position.copy(sat).add(outward.multiplyScalar(0.45));
+    camera.lookAt(0, 0, 0);
+  });
+  return null;
+}
 
 // ── live stream ──────────────────────────────────────────────────────────────
 function useTrackerStream() {
@@ -388,12 +409,14 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }
 
 // Orbit path + glowing marker for the tracked satellite, propagated client-side.
 function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass, viewMode }: {
-  norad: number; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void; viewMode: "orbit" | "sky";
+  norad: number; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void; viewMode: "orbit" | "sky" | "ride";
 }) {
   const marker = useRef<THREE.Object3D>(null);
   const glow = useRef<THREE.Mesh>(null);
   const acc = useRef(99);
   const orbit = useMemo(() => orbitPath(line1, line2, 240), [line1, line2]);
+  // Ground track: where the satellite passes over the surface for the next ~95 min.
+  const ground = useMemo(() => groundTrack(line1, line2, 95, 220), [line1, line2]);
 
   const [issPos, setIssPos] = useState<{ lat: number; lng: number } | null>(null);
 
@@ -483,9 +506,13 @@ function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTeleme
   return (
     <>
       {orbit.length > 1 && <Line points={orbit} color="#7df9ff" lineWidth={2} transparent opacity={0.85} />}
+      {/* ground track on the surface (hidden in sky view) */}
+      {viewMode !== "sky" && ground.length > 1 && (
+        <Line points={ground} color="#34d399" lineWidth={1.5} transparent opacity={0.7} dashed dashScale={50} />
+      )}
       <mesh ref={glow}><sphereGeometry args={[viewMode === "sky" ? 0.005 : 0.07, 16, 16]} /><meshBasicMaterial color="#7df9ff" transparent opacity={0.3} /></mesh>
       <group ref={marker as any}>
-        {viewMode === "orbit" && (norad === 25544 ? <ISSModel /> : <ProceduralSatelliteModel />)}
+        {viewMode !== "sky" && (norad === 25544 ? <ISSModel /> : <ProceduralSatelliteModel />)}
       </group>
     </>
   );
@@ -536,8 +563,12 @@ export default function GlobalTracker() {
   const [query, setQuery] = useState("");
   const [showPanel, setShowPanel] = useState(true);
   const [showMesh, setShowMesh] = useState(false);
-  const [viewMode, setViewMode] = useState<"orbit" | "sky">("orbit");
+  const [viewMode, setViewMode] = useState<"orbit" | "sky" | "ride">("orbit");
   const conjunctions = useConjunctions();
+  // Ride-along has no target once the satellite is untracked — fall back to orbit.
+  useEffect(() => {
+    if (viewMode === "ride" && !tracked) setViewMode("orbit");
+  }, [viewMode, tracked]);
 
   const [offsetMin, setOffsetMin] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
@@ -788,8 +819,8 @@ export default function GlobalTracker() {
             <directionalLight position={sun} intensity={2} />
             <Suspense fallback={<Html center>Loading globe…</Html>}>
               <Stars radius={90} depth={50} count={4000} factor={4} fade />
-              {viewMode === "orbit" && <Earth spin={false} />}
-              {viewMode === "orbit" && <CountryLabels />}
+              {viewMode !== "sky" && <Earth spin={false} />}
+              {viewMode !== "sky" && <CountryLabels />}
               {userCoords && <UserLocationMarker lat={userCoords.lat} lng={userCoords.lng} />}
               <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} showMesh={showMesh} onPick={(p) => track(p.norad_id)} />
               {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} viewMode={viewMode} />}
@@ -802,22 +833,33 @@ export default function GlobalTracker() {
                 />
               )}
               <SkyCamera userCoords={userCoords} active={viewMode === "sky"} />
+              {tracked && (
+                <RideAlongCamera line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} active={viewMode === "ride"} />
+              )}
             </Suspense>
             <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked && viewMode === "orbit"} autoRotateSpeed={0.18} enabled={viewMode === "orbit"} />
           </Canvas>
         )}
 
-        {/* Floating Sky View Toggle */}
-        {userCoords && (
-          <div className="absolute top-4 right-4 z-10">
-            <button 
-              onClick={() => setViewMode(v => v === "orbit" ? "sky" : "orbit")} 
+        {/* Floating view toggles — Sky View (needs your location) + Ride Along (needs a tracked satellite) */}
+        <div className="absolute top-4 right-4 z-10 flex flex-col items-end gap-2">
+          {userCoords && (
+            <button
+              onClick={() => setViewMode(v => v === "sky" ? "orbit" : "sky")}
               className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "sky" ? "bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-emerald-500/20" : "bg-black/50 border-white/20 text-white/70 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
             >
               {viewMode === "sky" ? "Exit Sky View" : "🔭 Enter Sky View"}
             </button>
-          </div>
-        )}
+          )}
+          {tracked && (
+            <button
+              onClick={() => setViewMode(v => v === "ride" ? "orbit" : "ride")}
+              className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "ride" ? "bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-cyan-500/20" : "bg-black/50 border-white/20 text-white/70 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
+            >
+              {viewMode === "ride" ? "Exit Ride Along" : "🛰 Ride Along"}
+            </button>
+          )}
+        </div>
 
         {/* search-to-track — sits below the stats toggle on mobile to avoid overlap */}
         <div className="absolute top-14 sm:top-3 left-1/2 -translate-x-1/2 w-[min(420px,92%)]">
