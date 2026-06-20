@@ -2,6 +2,7 @@
 export const runtime = "edge";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { PageHeader, Chip } from "@/components/ui";
 
 interface SyncLog {
@@ -77,6 +78,30 @@ export default function SyncLogsPage() {
     if (name === "news") return "border-emerald-500/30 text-emerald-400";
     if (name === "refresh-run") return "border-cyan-500/30 text-cyan-400";
     return "border-white/10 text-white/50";
+  };
+
+  const renderItemList = (title: string, items: string[], type: "added" | "updated") => {
+    if (!items || items.length === 0) return null;
+    const titleColor = type === "added" ? "text-emerald-400/80" : "text-blue-400/80";
+    return (
+      <div className="mt-4">
+        <h4 className={`text-[10px] uppercase tracking-widest ${titleColor} font-semibold mb-2`}>
+          {title} ({items.length})
+        </h4>
+        <div className="max-h-40 overflow-y-auto bg-black/60 border border-white/5 p-2.5 rounded divide-y divide-white/5 space-y-1 font-sans text-xs">
+          {items.map((item, index) => (
+            <div key={index} className="py-1">
+              <Link 
+                href={`/search?q=${encodeURIComponent(item)}`}
+                className="text-white/80 hover:text-[var(--color-space-accent-2)] transition-colors underline decoration-white/20 hover:decoration-[var(--color-space-accent-2)] underline-offset-2"
+              >
+                {item}
+              </Link>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -289,49 +314,43 @@ export default function SyncLogsPage() {
                     </div>
                   </div>
 
-                  {/* Added Items List */}
-                  {detailsList.added_items && Array.isArray(detailsList.added_items) && detailsList.added_items.length > 0 && (
-                    <div>
-                      <h4 className="text-[10px] uppercase tracking-widest text-emerald-400/80 font-semibold mb-2">
-                        Added Records ({detailsList.added_items.length})
-                      </h4>
-                      <div className="max-h-32 overflow-y-auto bg-black/60 border border-white/5 p-2.5 rounded divide-y divide-white/5 space-y-1 font-sans text-xs">
-                        {detailsList.added_items.map((item: string, index: number) => (
-                          <div key={index} className="text-white/80 py-1">{item}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                  {/* Added/Updated Items Lists for Flat Structure (e.g. news, tle-*) */}
+                  {renderItemList("Added Records", detailsList.added_items, "added")}
+                  {renderItemList("Updated Records", detailsList.updated_items, "updated")}
 
-                  {/* Updated Items List */}
-                  {detailsList.updated_items && Array.isArray(detailsList.updated_items) && detailsList.updated_items.length > 0 && (
-                    <div>
-                      <h4 className="text-[10px] uppercase tracking-widest text-blue-400/80 font-semibold mb-2">
-                        Updated Records ({detailsList.updated_items.length})
-                      </h4>
-                      <div className="max-h-32 overflow-y-auto bg-black/60 border border-white/5 p-2.5 rounded divide-y divide-white/5 space-y-1 font-sans text-xs">
-                        {detailsList.updated_items.map((item: string, index: number) => (
-                          <div key={index} className="text-white/80 py-1">{item}</div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Launches detailed statistics */}
+                  {/* Launches detailed statistics & Nested Lists */}
                   {log.job_name === "launches" && detailsList.agencies && (
-                    <div className="space-y-3">
-                      <h4 className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">
-                        Component Counts
-                      </h4>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div className="space-y-4">
+                      <div className="space-y-3">
+                        <h4 className="text-[10px] uppercase tracking-widest text-white/40 font-semibold">
+                          Component Counts
+                        </h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {["agencies", "rockets", "launch_sites", "launches"].map((k) => {
+                            const val = detailsList[k] || { added: 0, updated: 0 };
+                            return (
+                              <div key={k} className="border border-white/5 bg-black/20 p-2 text-center">
+                                <span className="text-[9px] uppercase tracking-wider text-white/30 block">{k}</span>
+                                <span className="text-emerald-400 font-bold">+{val.added || 0}</span>
+                                <span className="text-white/30 text-[10px] ml-1">/</span>
+                                <span className="text-blue-400 font-bold ml-1">{val.updated || 0}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Render nested lists for launches job */}
+                      <div className="space-y-4">
                         {["agencies", "rockets", "launch_sites", "launches"].map((k) => {
-                          const val = detailsList[k] || { added: 0, updated: 0 };
+                          const val = detailsList[k];
+                          if (!val || !val.details) return null;
+                          const titleAdded = `Added ${k.replace('_', ' ')}`;
+                          const titleUpdated = `Updated ${k.replace('_', ' ')}`;
                           return (
-                            <div key={k} className="border border-white/5 bg-black/20 p-2 text-center">
-                              <span className="text-[9px] uppercase tracking-wider text-white/30 block">{k}</span>
-                              <span className="text-emerald-400 font-bold">+{val.added || 0}</span>
-                              <span className="text-white/30 text-[10px] ml-1">/</span>
-                              <span className="text-blue-400 font-bold ml-1">{val.updated || 0}</span>
+                            <div key={`lists-${k}`}>
+                              {renderItemList(titleAdded, val.details.added_items, "added")}
+                              {renderItemList(titleUpdated, val.details.updated_items, "updated")}
                             </div>
                           );
                         })}
@@ -341,7 +360,7 @@ export default function SyncLogsPage() {
 
                   {/* Error Output */}
                   {detailsList.error && (
-                    <div className="border border-red-500/20 bg-red-500/5 p-3 text-red-400">
+                    <div className="border border-red-500/20 bg-red-500/5 p-3 text-red-400 mt-4">
                       <div className="text-[10px] uppercase tracking-widest font-semibold mb-1">Execution Error</div>
                       <pre className="whitespace-pre-wrap font-mono text-[11px] leading-relaxed">{detailsList.error}</pre>
                     </div>
@@ -386,3 +405,4 @@ export default function SyncLogsPage() {
     </div>
   );
 }
+
