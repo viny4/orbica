@@ -14,6 +14,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/contrib/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/orbica/api/internal/config"
@@ -62,6 +63,13 @@ func main() {
 	handlers.New(pool).Register(app)
 
 	// Register WebSocket handler for the live tracker
+	app.Use("/ws", func(c *fiber.Ctx) error {
+		if websocket.IsWebSocketUpgrade(c) {
+			c.Locals("allowed", true)
+			return c.Next()
+		}
+		return fiber.ErrUpgradeRequired
+	})
 	app.Get("/ws", ws.Handler(h))
 
 	// Graceful shutdown on SIGINT/SIGTERM.
