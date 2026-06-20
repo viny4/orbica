@@ -199,7 +199,7 @@ export default async function Home() {
           
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {topAgencies.map((agency: any, idx: number) => (
-              <Link key={agency.id} href={`/agencies/${agency.id}`} className="group relative block border border-white/10 bg-white/[0.015] p-6 transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.03]">
+              <Link key={agency.id} href={`/agencies/${agency.slug}`} className="group relative block border border-white/10 bg-white/[0.015] p-6 transition-colors duration-300 hover:border-white/30 hover:bg-white/[0.03]">
                 <div className="flex flex-col h-full">
                   <div className="text-[4rem] font-extralight text-white/5 leading-none absolute top-4 right-4 pointer-events-none">
                     0{idx + 1}
