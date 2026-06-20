@@ -1,23 +1,17 @@
-// Package ws bridges gorilla/websocket connections to the hub.
+// Package ws bridges fiber websocket connections to the hub.
 package ws
 
 import (
 	"encoding/json"
-	"log"
-	"net/http"
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/orbica/tracker/internal/hub"
-	"github.com/orbica/tracker/internal/propagate"
-)
+	"github.com/gofiber/contrib/websocket"
+	"github.com/gofiber/fiber/v2"
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1 << 16,
-	CheckOrigin:     func(r *http.Request) bool { return true }, // tighten in prod
-}
+	"github.com/orbica/api/internal/hub"
+	"github.com/orbica/api/internal/propagate"
+)
 
 // inbound is the client → server control message.
 type inbound struct {
@@ -58,23 +52,18 @@ func (c *conn) Send(positions []propagate.Position) {
 	}
 }
 
-// Handler returns an http.HandlerFunc that upgrades and serves the hub.
-func Handler(h *hub.Hub) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		socket, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Printf("ws upgrade: %v", err)
-			return
-		}
-		c := &conn{ws: socket, subs: make(map[int]struct{})}
-		h.Register(c)
+// Handler returns a fiber.Handler that upgrades and serves the hub.
+func Handler(h *hub.Hub) fiber.Handler {
+	return websocket.New(func(c *websocket.Conn) {
+		client := &conn{ws: c, subs: make(map[int]struct{})}
+		h.Register(client)
 		defer func() {
-			h.Unregister(c)
-			_ = socket.Close()
+			h.Unregister(client)
+			_ = c.Close()
 		}()
 
 		for {
-			_, data, err := socket.ReadMessage()
+			_, data, err := c.ReadMessage()
 			if err != nil {
 				return // client gone
 			}
@@ -82,9 +71,9 @@ func Handler(h *hub.Hub) http.HandlerFunc {
 			if err := json.Unmarshal(data, &msg); err != nil {
 				continue
 			}
-			c.apply(msg)
+			client.apply(msg)
 		}
-	}
+	})
 }
 
 func (c *conn) apply(msg inbound) {
