@@ -16,7 +16,7 @@ Gunter's Space Page has the data depth but a 2001 UI. CesiumJS trackers have liv
                     ┌───────────┴───────────┐
             ┌───────▼───────┐       ┌────────▼────────┐
             │   Go API      │       │  Go Tracker     │
-            │ services/api  │       │ services/tracker│  (sgp4 live positions)
+            │ services/api  │
             │ Fiber+gqlgen  │       └────────┬────────┘
             └───────┬───────┘                │
                     │            ┌───────────▼───────────┐

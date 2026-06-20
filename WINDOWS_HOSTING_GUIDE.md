@@ -51,13 +51,6 @@ cd services/api
 go run ./cmd/server
 ```
 
-### 2. Go WebSocket Tracker (Port 7788)
-* Computes live satellite positions and broadcasts to clients.
-```bash
-cd services/tracker
-go run ./cmd/tracker
-```
-
 ---
 
 ## Phase 3: Expose Services via Cloudflare Tunnel

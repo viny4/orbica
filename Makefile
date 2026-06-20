@@ -36,8 +36,6 @@ seed: ## Run the historical data seed (LL2 + CelesTrak)
 api: ## Run the Go API server
 	cd services/api && go run ./cmd/server
 
-tracker: ## Run the Go WebSocket tracker
-	cd services/tracker && go run ./cmd/tracker
 
 pipeline: ## Run the Python pipeline API
 	cd services/pipeline && uvicorn src.main:app --reload --port $(PIPELINE_PORT)
@@ -53,13 +51,11 @@ cron-install: ## Install the every-4-hours auto-refresh cron job
 
 fmt: ## Format Go + Python + web
 	cd services/api && go fmt ./... || true
-	cd services/tracker && go fmt ./... || true
 	cd services/pipeline && ruff format src tests || true
 	cd web && npm run format || true
 
 test: ## Run all test suites
 	cd services/api && go test ./... || true
-	cd services/tracker && go test ./... || true
 	cd services/pipeline && pytest -q || true
 	cd web && npm test || true
 
