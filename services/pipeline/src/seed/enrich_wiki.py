@@ -28,6 +28,14 @@ OVERRIDE = {
     "IRAS": "IRAS",
     "SOHO": "Solar and Heliospheric Observatory",
     "TIANGONG": "Tiangong space station",
+    "DRAGONFLY": "Dragonfly (spacecraft)",
+    "DAWN": "Dawn (spacecraft)",
+    "GALILEO": "Galileo (spacecraft)",
+    "GENESIS": "Genesis (spacecraft)",
+    "CURIOSITY": "Curiosity (rover)",
+    "PERSEVERANCE": "Perseverance (rover)",
+    "OPPORTUNITY": "Opportunity (rover)",
+    "SPIRIT": "Spirit (rover)",
 }
 
 FAMOUS = [
