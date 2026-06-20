@@ -33,6 +33,7 @@ data/seeds/.launch_backfill_offset
 
 # Compiled Go binaries
 /services/api/rp-api
+/services/api/server
 /services/tracker/rp-tracker
 
 # Editor

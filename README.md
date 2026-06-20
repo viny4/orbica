@@ -6,27 +6,33 @@ Gunter's Space Page has the data depth but a 2001 UI. CesiumJS trackers have liv
 
 ---
 
-## Architecture (microservices)
+## Architecture
 
 ```
-                         ┌──────────────┐
-                         │   Next.js    │  web/        (App Router, R3F, Cesium)
-                         └──────┬───────┘
-              REST/GraphQL      │      WebSocket
-                    ┌───────────┴───────────┐
-            ┌───────▼───────┐       ┌────────▼────────┐
-            │   Go API      │       │  Go Tracker     │
-            │ services/api  │
-            │ Fiber+gqlgen  │       └────────┬────────┘
-            └───────┬───────┘                │
-                    │            ┌───────────▼───────────┐
-        ┌───────────┼────────────┤  Python Pipeline      │  services/pipeline
-        │           │            │  FastAPI+Celery+Airflow│  (LL2/CelesTrak ingest)
-        │           │            └───────────┬───────────┘
-   ┌────▼────┐ ┌────▼─────┐ ┌─────▼─────┐ ┌──▼──┐ ┌────────┐
-   │Postgres │ │Timescale │ │Elastic    │ │Redis│ │ Kafka  │
-   │+PostGIS │ │ (TLE)    │ │search     │ │     │ │        │
-   └─────────┘ └──────────┘ └───────────┘ └─────┘ └────────┘
+                         ┌──────────────────────┐
+                         │       Next.js        │  web/   (App Router, R3F)
+                         │   Cloudflare Pages   │
+                         └──────────┬───────────┘
+                  REST  +  WebSocket │  (live SGP4 positions)
+                         ┌──────────▼───────────┐
+                         │        Go API        │  services/api  (Fiber v2, pgx/v5)
+                         │  REST + live tracker  │  on Render — the tracker is
+                         │   (sgp4 propagation)  │  merged in for one free service
+                         └──────────┬───────────┘
+                                    │
+        ┌───────────────────────────┼───────────────────────────┐
+        │  Python Pipeline (services/pipeline) — LL2 / CelesTrak │
+        │  / SNAPI ingest + orbital math; runs every 4h via      │
+        │  GitHub Actions (.github/workflows/sync.yml)           │
+        │  Python Intel (services/intel) — conjunctions,         │
+        │  reentry watch, space weather                          │
+        └───────────────────────────┬───────────────────────────┘
+                                    │
+                         ┌──────────▼───────────┐
+                         │       Postgres       │  + PostGIS + TimescaleDB
+                         └──────────────────────┘
+
+Local dev also brings up Redis, Elasticsearch and Kafka (see docker-compose.yml).
 ```
 
 ## Repo layout
@@ -34,15 +40,15 @@ Gunter's Space Page has the data depth but a 2001 UI. CesiumJS trackers have liv
 ```
 orbica/
 ├── services/
-│   ├── api/          # Go — REST + GraphQL (Fiber v2, gqlgen, pgx/v5)
-│   ├── pipeline/     # Python — data ingestion + orbital math (FastAPI, Celery, Airflow)
-│   └── tracker/      # Go — WebSocket live satellite tracker (sgp4)
-├── web/              # Next.js 14 + TypeScript frontend
-├── infra/            # docker / k8s / kafka / airflow
+│   ├── api/          # Go — REST API + live WebSocket tracker (Fiber v2, pgx/v5, sgp4)
+│   ├── pipeline/     # Python — data ingestion + orbital math (LL2/CelesTrak/SNAPI)
+│   └── intel/        # Python — computed space intelligence (conjunctions, reentry, weather)
+├── web/              # Next.js 14 + TypeScript + React-Three-Fiber
 ├── data/
 │   ├── schemas/      # SQL migrations (auto-run by docker-compose)
 │   └── seeds/        # static seed data
-├── scripts/          # migrate.go and ops helpers
+├── .github/workflows/ # CI + the 4-hourly data sync
+├── scripts/          # migrate.go, sync.sh, and ops helpers
 └── docs/
 ```
 
