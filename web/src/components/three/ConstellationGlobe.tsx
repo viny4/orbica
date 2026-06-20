@@ -41,10 +41,8 @@ function useConstellationStream(noradIds: Set<number>) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    let url = process.env.NEXT_PUBLIC_TRACKER_WS_URL;
-    if (!url && process.env.NEXT_PUBLIC_API_URL) {
-      url = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
-    }
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+    const url = apiUrl ? apiUrl.replace(/^http/, "ws") : "";
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout>;
 
