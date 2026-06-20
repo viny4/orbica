@@ -165,7 +165,10 @@ function useTrackerStream() {
   const wsRef = useRef<WebSocket | null>(null);
   const offsetRef = useRef(0);
   useEffect(() => {
-    const url = process.env.NEXT_PUBLIC_TRACKER_WS_URL || "ws://localhost:7788";
+    let url = process.env.NEXT_PUBLIC_TRACKER_WS_URL;
+    if (!url && process.env.NEXT_PUBLIC_API_URL) {
+      url = process.env.NEXT_PUBLIC_API_URL.replace(/^http/, "ws");
+    }
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout>;
     const connect = () => {
