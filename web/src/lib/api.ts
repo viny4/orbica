@@ -5,13 +5,24 @@ const BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080";
 
 async function get<T>(path: string, revalidate = 300): Promise<T> {
-  const res = await fetch(`${BASE}/api/v1${path}`, {
-    next: { revalidate },
-  });
-  if (!res.ok) {
-    throw new Error(`API ${path} → ${res.status}`);
+  const url = `${BASE}/api/v1${path}`;
+  // The API runs on a free dyno that can briefly cold-start. Retry a couple of
+  // times (with a timeout) so a momentary wake-up doesn't render an empty page.
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        next: { revalidate },
+        signal: AbortSignal.timeout(12000),
+      });
+      if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+      return (await res.json()) as T;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 2500));
+    }
   }
-  return res.json() as Promise<T>;
+  throw lastErr;
 }
 
 // --- Domain types (subset of the schema the UI needs) ---
