@@ -57,7 +57,8 @@ def enrich() -> dict:
             WHERE o.code = s.owner_code AND (s.operator_name IS NULL OR s.operator_name = '')
             """
         )
-        log.info("operator_name   filled %d", cur.rowcount); total += cur.rowcount
+        log.info("operator_name   filled %d", cur.rowcount)
+        total += cur.rowcount
 
         # 2) constellation from name patterns
         for prefix, name in _CONSTELLATION_BY_NAME.items():
@@ -108,7 +109,8 @@ def enrich() -> dict:
             WHERE description IS NULL OR description = ''
             """
         )
-        log.info("description     filled %d", cur.rowcount); total += cur.rowcount
+        log.info("description     filled %d", cur.rowcount)
+        total += cur.rowcount
 
     return {"updated": total}
 
