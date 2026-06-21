@@ -23,10 +23,24 @@ jobs:
       - name: Install Dependencies
         run: |
           pip install -r services/pipeline/requirements.txt
+          pip install -r services/intel/requirements.txt
 
       - name: Run Sync Script
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          SPACE_TRACK_USER: ${{ secrets.SPACE_TRACK_USER }}
+          SPACE_TRACK_PASS: ${{ secrets.SPACE_TRACK_PASS }}
         working-directory: services/pipeline
         run: |
           python -m src.sync.refresh
+
+      # Computed "space intelligence" — keeps space_weather, reentries and
+      # conjunctions fresh. Each is best-effort so one failure can't block the run.
+      - name: Refresh Intel (space weather, reentry, conjunctions)
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+        working-directory: services/intel
+        run: |
+          python -m src.spaceweather || echo "spaceweather step failed"
+          python -m src.reentry      || echo "reentry step failed"
+          python -m src.conjunctions || echo "conjunctions step failed"

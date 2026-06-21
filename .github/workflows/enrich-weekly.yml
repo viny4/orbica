@@ -1,0 +1,29 @@
+name: Weekly Enrichment (DISCOS)
+
+# Physical characteristics (mass, dimensions, shape) are static, so a heavy bulk
+# DISCOS pull only needs to run weekly — to backfill satellites added since the
+# last run. The 4-hourly sync handles fast-changing data (launches, TLEs, weather).
+on:
+  schedule:
+    - cron: "0 5 * * 1" # Mondays 05:00 UTC
+  workflow_dispatch:
+
+jobs:
+  discos:
+    name: DISCOS mass + dimensions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: services/pipeline/requirements.txt
+      - run: pip install -r services/pipeline/requirements.txt
+      - name: Enrich satellites from ESA DISCOS
+        env:
+          POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
+          DISCOS_TOKEN: ${{ secrets.DISCOS_TOKEN }}
+        working-directory: services/pipeline
+        run: |
+          python -m src.seed.enrich_discos

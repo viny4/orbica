@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     celestrak_base_url: str = "https://celestrak.org"
     space_track_user: str = ""
     space_track_pass: str = ""
+    discos_token: str = ""
     nasa_api_key: str = ""
 
     # Politeness: LL2 free tier is heavily rate-limited.

@@ -78,7 +78,10 @@ def _step(name: str, fn, *args) -> bool:
 
 def main() -> int:
     from src.db.pool import refresh_year_summary
-    from src.seed import articles, historical_seed, satellites_seed
+    from src.seed import (
+        articles, enrich_derived, enrich_rocket_specs, enrich_spacetrack,
+        historical_seed, satellites_seed,
+    )
 
     since = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
     log.info("---- refresh run start (launches since %s) ----", since)
@@ -99,10 +102,17 @@ def main() -> int:
     for group in ("starlink", "gps-ops", "galileo", "oneweb", "glo-ops", "iridium-NEXT", "globalstar", "orbcomm", "beidou", "kuiper"):
         _step(f"tle-{group}", satellites_seed.seed_group, group)
 
-    # Tie new satellites back to their launch, fill constellation specs, refresh
-    # news, rebuild summary.
+    # Tie new satellites back to their launch, fill constellation specs + pad
+    # operators, refresh news, rebuild summary.
     _step("link-satellites", satellites_seed.link_satellites_to_launches)
     _step("constellation-specs", satellites_seed.derive_constellation_specs)
+    # Derive operator/description/constellation/etc. from data we already hold.
+    _step("derived-fields", enrich_derived.enrich)
+    _step("pad-operators", historical_seed.derive_pad_operators)
+    # Derive rocket specs (propellants, Isp, thrust, last flight) from engines + launches.
+    _step("rocket-specs", enrich_rocket_specs.enrich)
+    # Space-Track SATCAT: decay dates + RCS size class (best-effort; needs creds).
+    _step("space-track", enrich_spacetrack.enrich)
     critical_ok &= _step("news", articles.ingest)
     _step("year-summary", refresh_year_summary)
 

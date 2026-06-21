@@ -6,6 +6,7 @@ set -uo pipefail
 
 ROOT="/Users/vinayagam/Documents/rockets and satelights"
 PIPELINE="$ROOT/services/pipeline"
+INTEL="$ROOT/services/intel"
 PY="$PIPELINE/.venv/bin/python"
 LOG_DIR="$ROOT/logs"
 mkdir -p "$LOG_DIR"
@@ -20,6 +21,11 @@ cd "$PIPELINE"
   echo "===== sync start $(date '+%Y-%m-%d %H:%M:%S %z') ====="
   PYTHONPATH="$PIPELINE" "$PY" -m src.sync.refresh
   rc=$?
+  # Computed intelligence — keep space_weather / reentries / conjunctions fresh.
+  echo "--- intel refresh ---"
+  PYTHONPATH="$INTEL" "$PY" -m src.spaceweather || echo "spaceweather failed"
+  PYTHONPATH="$INTEL" "$PY" -m src.reentry      || echo "reentry failed"
+  PYTHONPATH="$INTEL" "$PY" -m src.conjunctions || echo "conjunctions failed"
   echo "===== sync end   $(date '+%Y-%m-%d %H:%M:%S %z') rc=$rc ====="
   echo
 } >>"$LOG_DIR/sync.log" 2>&1

@@ -9,6 +9,7 @@ Run:  python -m src.reentry
 from __future__ import annotations
 
 import logging
+import math
 
 from sgp4.api import Satrec
 
@@ -20,15 +21,27 @@ log = logging.getLogger("reentry")
 RE_KM = 6378.137  # Earth equatorial radius
 
 
+def _est_days(perigee_km: float) -> float:
+    """Rough order-of-magnitude days-to-reentry from perigee altitude alone.
+
+    A monotonic drag heuristic (true lifetime also depends on the unknown
+    ballistic coefficient + solar activity, so this is deliberately approximate
+    and surfaced as "~N days est." in the UI): ~days near 180 km, ~weeks by
+    250 km, ~months by 300 km, ~a couple of years approaching 400 km.
+    """
+    if perigee_km < 180:
+        return round(max(0.3, (perigee_km - 110) / 12), 1)
+    return round(0.31 * math.exp(perigee_km / 51.8), 1)
+
+
 def classify(perigee_km: float) -> tuple[str | None, float | None]:
     """status, rough days-to-reentry (clearly an estimate)."""
     if perigee_km < 180:
-        # crude exponential-ish drag heuristic for the final descent
-        return "imminent", max(0.3, (perigee_km - 110) / 12)
+        return "imminent", _est_days(perigee_km)
     if perigee_km < 300:
-        return "decaying", None
+        return "decaying", _est_days(perigee_km)
     if perigee_km < 400:
-        return "low", None
+        return "low", _est_days(perigee_km)
     return None, None
 
 

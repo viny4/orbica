@@ -108,6 +108,26 @@ def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict
     return _lookup_ll2_to_id("rocket_vehicles"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
 
 
+def derive_pad_operators() -> int:
+    """Set each launch site's operator to the agency that launches there most.
+    LL2 doesn't carry this; only fills NULLs so it's idempotent + cron-safe."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            UPDATE launch_sites ls SET operator_id = sub.agency_id
+            FROM (
+              SELECT launch_site_id, agency_id,
+                     ROW_NUMBER() OVER (PARTITION BY launch_site_id ORDER BY COUNT(*) DESC) AS rn
+              FROM launch_events
+              WHERE launch_site_id IS NOT NULL AND agency_id IS NOT NULL
+              GROUP BY launch_site_id, agency_id
+            ) sub
+            WHERE ls.id = sub.launch_site_id AND sub.rn = 1 AND ls.operator_id IS NULL
+            """
+        )
+        return cur.rowcount
+
+
 def _upsert_family_by_name(fam: dict) -> str | None:
     # rocket_families has no unique on name; emulate get-or-create.
     with cursor() as cur:
@@ -132,9 +152,11 @@ def seed_pads(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict[in
         row = m.pad_row(pad, None)
         if row["ll2_id"] is None:
             continue
+        # operator_id is derived (from the agency that launches there most), not
+        # carried by LL2 — keep it out of the update so a re-sync can't null it.
         res = upsert(
             "launch_sites", row, conflict="ll2_id",
-            update_cols=[k for k in row if k != "ll2_id"],
+            update_cols=[k for k in row if k not in ("ll2_id", "operator_id")],
             return_inserted=True,
         )
         _, inserted = res if isinstance(res, tuple) else (res, False)

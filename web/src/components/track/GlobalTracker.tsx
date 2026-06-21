@@ -98,7 +98,9 @@ function useConjunctions() {
 
 function SkyCamera({ userCoords, active }: { userCoords: {lat: number, lng: number} | null, active: boolean }) {
   const { camera, gl } = useThree();
-  const rotRef = useRef({ x: 0, y: 0 });
+  // Start looking partway down toward the horizon (not straight up at the zenith)
+  // so the horizon ring + N/E/S/W compass are visible for orientation.
+  const rotRef = useRef({ x: 0, y: 0.7 });
 
   useEffect(() => {
     if (!active || !userCoords) {
@@ -157,6 +159,53 @@ function SkyCamera({ userCoords, active }: { userCoords: {lat: number, lng: numb
 }
 
 
+
+// Local horizon ring + cardinal markers at the observer's location, so Sky View
+// has a real frame of reference (where's the horizon, which way is N/E/S/W)
+// instead of a disorienting starfield.
+function HorizonDome({ userCoords }: { userCoords: { lat: number; lng: number } }) {
+  const { ring, dirs } = useMemo(() => {
+    const pos = new THREE.Vector3(...latLngAltToVec3(userCoords.lat, userCoords.lng, 0.003));
+    const up = pos.clone().normalize();
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    // North = global up projected onto the local horizon plane.
+    const north = worldUp.clone().sub(up.clone().multiplyScalar(worldUp.dot(up))).normalize();
+    const east = new THREE.Vector3().crossVectors(north, up).normalize();
+    const R = 0.6;
+    const ringPts: THREE.Vector3[] = [];
+    for (let i = 0; i <= 72; i++) {
+      const a = (i / 72) * Math.PI * 2;
+      ringPts.push(
+        pos.clone()
+          .add(east.clone().multiplyScalar(Math.cos(a) * R))
+          .add(north.clone().multiplyScalar(Math.sin(a) * R)),
+      );
+    }
+    const at = (d: THREE.Vector3) => pos.clone().add(d.clone().multiplyScalar(R));
+    return {
+      ring: ringPts,
+      dirs: [
+        { t: "N", p: at(north) },
+        { t: "E", p: at(east) },
+        { t: "S", p: at(north.clone().negate()) },
+        { t: "W", p: at(east.clone().negate()) },
+      ],
+    };
+  }, [userCoords]);
+
+  return (
+    <group>
+      <Line points={ring} color="#34d399" lineWidth={1.5} transparent opacity={0.45} />
+      {dirs.map((d) => (
+        <Html key={d.t} position={d.p.toArray()} center>
+          <div className="text-[11px] font-mono font-semibold tracking-widest text-emerald-300/90 select-none pointer-events-none">
+            {d.t}
+          </div>
+        </Html>
+      ))}
+    </group>
+  );
+}
 
 // Ride-along: lock the camera just outside the tracked satellite, looking back
 // at Earth, so the planet rotates beneath you as the satellite orbits. Re-derives
@@ -408,8 +457,8 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }
 }
 
 // Orbit path + glowing marker for the tracked satellite, propagated client-side.
-function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass, viewMode }: {
-  norad: number; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void; viewMode: "orbit" | "sky" | "ride";
+function TrackedSatellite({ norad, name, satMeta, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass, viewMode }: {
+  norad: number; name?: string; satMeta?: Meta; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void; viewMode: "orbit" | "sky" | "ride";
 }) {
   const marker = useRef<THREE.Object3D>(null);
   const glow = useRef<THREE.Mesh>(null);
@@ -512,7 +561,9 @@ function TrackedSatellite({ norad, line1, line2, offsetMin, userCoords, onTeleme
       )}
       <mesh ref={glow}><sphereGeometry args={[viewMode === "sky" ? 0.005 : 0.07, 16, 16]} /><meshBasicMaterial color="#7df9ff" transparent opacity={0.3} /></mesh>
       <group ref={marker as any}>
-        {viewMode !== "sky" && (norad === 25544 ? <ISSModel /> : <ProceduralSatelliteModel />)}
+        {viewMode !== "sky" && (norad === 25544 ? <ISSModel /> : (
+          <ProceduralSatelliteModel purpose={satMeta?.purpose} constellation={satMeta?.constellation} name={name} />
+        ))}
       </group>
     </>
   );
@@ -823,7 +874,7 @@ export default function GlobalTracker() {
               {viewMode !== "sky" && <CountryLabels />}
               {userCoords && <UserLocationMarker lat={userCoords.lat} lng={userCoords.lng} />}
               <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} showMesh={showMesh} onPick={(p) => track(p.norad_id)} />
-              {tracked && <TrackedSatellite norad={tracked.norad} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} viewMode={viewMode} />}
+              {tracked && <TrackedSatellite norad={tracked.norad} name={tracked.name} satMeta={meta.get(tracked.norad)} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} viewMode={viewMode} />}
               {tracked && telemetry && (
                 <Footprint
                   lat={telemetry.lat}
@@ -833,6 +884,7 @@ export default function GlobalTracker() {
                 />
               )}
               <SkyCamera userCoords={userCoords} active={viewMode === "sky"} />
+              {viewMode === "sky" && userCoords && <HorizonDome userCoords={userCoords} />}
               {tracked && (
                 <RideAlongCamera line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} active={viewMode === "ride"} />
               )}
