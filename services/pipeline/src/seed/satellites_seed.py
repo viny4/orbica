@@ -196,6 +196,14 @@ def main() -> None:
     seed_group(group)
     linked = link_satellites_to_launches()
     log.info("linked %d satellites to launches", linked)
+    
+    # Enforce data retention: keep only the last 3 days of TLE snapshots
+    # to prevent unbounded storage growth on the Neon free tier.
+    with cursor() as cur:
+        cur.execute("DELETE FROM tle_snapshots WHERE captured_at < NOW() - INTERVAL '3 days'")
+        deleted = cur.rowcount
+        if deleted > 0:
+            log.info("cleaned up %d old TLE snapshots (storage retention)", deleted)
 
 
 if __name__ == "__main__":
