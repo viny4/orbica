@@ -3,6 +3,7 @@ package analytics
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -52,13 +53,76 @@ const insertSQL = `
 	INSERT INTO analytics_events (
 		anonymous_user_id, session_id, event_type, payload, path, referrer,
 		country, city, region, browser, os, device, screen_resolution,
-		is_bot, cf_ray, ip_hash, tracker_version
-	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`
+		is_bot, cf_ray, ip_hash, tracker_version, latitude, longitude
+	) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`
+
+// enrichGeo fills country/city/region/coordinates from each event's visitor IP.
+// Unique IPs are looked up concurrently (bounded) and cached, so repeat visitors
+// and repeat batches cost nothing. Best-effort — failures leave geo empty.
+func enrichGeo(events []*Event) {
+	uniq := map[string]struct{}{}
+	for _, e := range events {
+		if e.rawIP != "" {
+			uniq[e.rawIP] = struct{}{}
+		}
+	}
+	if len(uniq) > 0 {
+		sem := make(chan struct{}, 8)
+		var wg sync.WaitGroup
+		for ip := range uniq {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(ip string) {
+				defer wg.Done()
+				defer func() { <-sem }()
+				resolveGeo(ip) // warms the cache
+			}(ip)
+		}
+		wg.Wait()
+	}
+
+	for _, e := range events {
+		if e.rawIP == "" {
+			continue
+		}
+		g, ok := resolveGeo(e.rawIP)
+		if !ok {
+			continue
+		}
+		// Don't overwrite anything the client/CF already provided.
+		if e.Country == "" {
+			e.Country = g.Country
+		}
+		if e.Region == "" {
+			e.Region = g.Region
+		}
+		if e.City == "" {
+			e.City = g.City
+		}
+		if e.Latitude == 0 {
+			e.Latitude = g.Latitude
+		}
+		if e.Longitude == 0 {
+			e.Longitude = g.Longitude
+		}
+	}
+}
+
+// geoNull maps an unresolved 0 coordinate to SQL NULL (0,0 is a real location in
+// the ocean, so we must not store it as a genuine fix).
+func geoNull(v float64) *float64 {
+	if v == 0 {
+		return nil
+	}
+	return &v
+}
 
 func flushBatch(events []*Event) {
 	if len(events) == 0 {
 		return
 	}
+
+	enrichGeo(events)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -80,7 +144,7 @@ func flushBatch(events []*Event) {
 		b.Queue(insertSQL,
 			e.AnonymousUserID, e.SessionID, e.EventType, payload, e.Path, e.Referrer,
 			e.Country, e.City, e.Region, e.Browser, e.OS, e.Device, e.ScreenRes,
-			e.IsBot, e.CFRay, e.IPHash, e.TrackerVersion,
+			e.IsBot, e.CFRay, e.IPHash, e.TrackerVersion, geoNull(e.Latitude), geoNull(e.Longitude),
 		)
 	}
 

@@ -22,6 +22,8 @@ type Event struct {
 	Country         string          `json:"country"`
 	City            string          `json:"city"`
 	Region          string          `json:"region"`
+	Latitude        float64         `json:"latitude"`
+	Longitude       float64         `json:"longitude"`
 	Browser         string          `json:"browser"`
 	OS              string          `json:"os"`
 	Device          string          `json:"device"`
@@ -30,4 +32,8 @@ type Event struct {
 	CFRay           string          `json:"cf_ray"`
 	IPHash          string          `json:"-"` // hashed from the request IP, never trusted from the body
 	TrackerVersion  string          `json:"tracker_version"`
+
+	// rawIP is the visitor IP captured server-side for geolocation only. It is
+	// never JSON-(de)serialized and never stored — we persist ip_hash + geo.
+	rawIP string
 }

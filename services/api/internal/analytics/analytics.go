@@ -19,6 +19,8 @@ func Register(app *fiber.App, p *pgxpool.Pool) {
 	admin.Get("/overview", getOverview)
 	admin.Get("/traffic", getTraffic)
 	admin.Get("/countries", getTopCountries)
+	admin.Get("/cities", getTopCities)
+	admin.Get("/locations", getLocations)
 	admin.Get("/browsers", getBrowsers)
 	admin.Get("/devices", getDevices)
 	admin.Get("/events", getEvents)

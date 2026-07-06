@@ -100,6 +100,62 @@ func getTopCountries(c *fiber.Ctx) error { return countBy(c, "country", "country
 func getBrowsers(c *fiber.Ctx) error     { return countBy(c, "browser", "browser") }
 func getDevices(c *fiber.Ctx) error      { return countBy(c, "device", "device") }
 
+// getTopCities returns the most-active cities (skips rows with no city).
+func getTopCities(c *fiber.Ctx) error {
+	ctx := context.Background()
+	rows, err := pool.Query(ctx, `
+		SELECT city, COALESCE(country, '') AS country, COUNT(DISTINCT session_id) AS visitors
+		FROM analytics_events
+		WHERE city IS NOT NULL AND city <> ''
+		GROUP BY city, country ORDER BY visitors DESC LIMIT 15`)
+	if err != nil {
+		return dbErr(c, err)
+	}
+	defer rows.Close()
+
+	out := []fiber.Map{}
+	for rows.Next() {
+		var city, country string
+		var n int
+		if err := rows.Scan(&city, &country, &n); err == nil {
+			out = append(out, fiber.Map{"city": city, "country": country, "visitors": n})
+		}
+	}
+	return c.JSON(out)
+}
+
+// getLocations returns geolocated points for a map — one row per distinct
+// coordinate with a visitor count (capped).
+func getLocations(c *fiber.Ctx) error {
+	ctx := context.Background()
+	rows, err := pool.Query(ctx, `
+		SELECT latitude, longitude,
+		       COALESCE(city, '') AS city, COALESCE(country, '') AS country,
+		       COUNT(DISTINCT session_id) AS visitors
+		FROM analytics_events
+		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		GROUP BY latitude, longitude, city, country
+		ORDER BY visitors DESC LIMIT 500`)
+	if err != nil {
+		return dbErr(c, err)
+	}
+	defer rows.Close()
+
+	out := []fiber.Map{}
+	for rows.Next() {
+		var lat, lon float64
+		var city, country string
+		var n int
+		if err := rows.Scan(&lat, &lon, &city, &country, &n); err == nil {
+			out = append(out, fiber.Map{
+				"latitude": lat, "longitude": lon,
+				"city": city, "country": country, "visitors": n,
+			})
+		}
+	}
+	return c.JSON(out)
+}
+
 // topPaths returns the most-viewed paths, optionally filtered by a LIKE prefix.
 func topPaths(c *fiber.Ctx, where string) error {
 	ctx := context.Background()

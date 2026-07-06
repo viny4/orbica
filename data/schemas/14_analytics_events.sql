@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS analytics_events (
     country VARCHAR(255),
     city VARCHAR(255),
     region VARCHAR(255),
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
     browser VARCHAR(255),
     os VARCHAR(255),
     device VARCHAR(255),
