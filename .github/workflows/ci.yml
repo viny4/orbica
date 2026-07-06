@@ -9,6 +9,10 @@ jobs:
   api:
     name: Go API
     runs-on: ubuntu-latest
+    # Build standalone (not the go.work workspace) so the API resolves its own
+    # pgx v5.6.0 on Go 1.22 — exactly like its Docker/Render build.
+    env:
+      GOWORK: "off"
     defaults:
       run:
         working-directory: services/api
@@ -18,6 +22,26 @@ jobs:
         with:
           go-version: "1.22"
           cache-dependency-path: services/api/go.sum
+      - run: go mod download
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./...
+
+  analytics:
+    name: Go Analytics
+    runs-on: ubuntu-latest
+    # Standalone build (matches its Docker image); pgx v5.10.0 needs Go 1.25.
+    env:
+      GOWORK: "off"
+    defaults:
+      run:
+        working-directory: services/analytics
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: services/analytics/go.sum
       - run: go mod download
       - run: go vet ./...
       - run: go build ./...
