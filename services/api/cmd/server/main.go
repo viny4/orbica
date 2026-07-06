@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 
+	"github.com/orbica/api/internal/analytics"
 	"github.com/orbica/api/internal/config"
 	"github.com/orbica/api/internal/db"
 	"github.com/orbica/api/internal/handlers"
@@ -105,6 +106,7 @@ func main() {
 			return p == "/health" ||
 				strings.HasPrefix(p, "/ws") ||
 				strings.HasPrefix(p, "/api/v1/track") ||
+				strings.HasPrefix(p, "/api/v1/admin") || // live analytics — never cache
 				strings.HasPrefix(p, "/api/v1/sync-logs") ||
 				strings.HasPrefix(p, "/api/v1/search")
 		},
@@ -112,6 +114,9 @@ func main() {
 
 	// Register REST handlers
 	handlers.New(pool).Register(app)
+
+	// First-party analytics: POST /track ingest + /api/v1/admin/* read APIs.
+	analytics.Register(app, pool)
 
 	// Register WebSocket handler for the live tracker
 	app.Use("/ws", func(c *fiber.Ctx) error {

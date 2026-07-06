@@ -77,21 +77,6 @@ services:
       - "2181:2181"
     restart: unless-stopped
 
-  analytics-api:
-    build:
-      context: .
-      dockerfile: services/analytics/Dockerfile
-    container_name: orbica-analytics-api
-    ports:
-      - "4001:4001"
-    environment:
-      - POSTGRES_URL=${POSTGRES_URL}
-      - ANALYTICS_PORT=4001
-      - ADMIN_SECRET=${ADMIN_SECRET}
-    depends_on:
-      - postgres
-    restart: unless-stopped
-
   kafka:
     image: confluentinc/cp-kafka:7.6.1
     container_name: orbica-kafka
