@@ -29,11 +29,15 @@ interface AnalyticsPayload {
   screen_resolution: string;
 }
 
-// Analytics ingest endpoint. Set NEXT_PUBLIC_ANALYTICS_URL to the deployed
-// analytics service (e.g. https://analytics.orbica.space) in production; falls
-// back to the local Docker service for dev.
+// Analytics ingest endpoint. Set NEXT_PUBLIC_ANALYTICS_URL to the deployed API
+// (e.g. https://orbica-api.onrender.com) so events are baked into the build.
+// In dev only, fall back to the local service. In production we NEVER fall back
+// to localhost — otherwise a build missing the env var would make visitors'
+// browsers try to reach their own device (triggering a scary local-network
+// permission prompt); instead we just skip tracking.
 const ANALYTICS_URL =
-  process.env.NEXT_PUBLIC_ANALYTICS_URL || 'http://localhost:4001';
+  process.env.NEXT_PUBLIC_ANALYTICS_URL ||
+  (process.env.NODE_ENV !== "production" ? "http://localhost:4001" : "");
 
 const SESSION_KEY = 'orbica_session_id';
 const SESSION_EXPIRY_KEY = 'orbica_session_expiry';
@@ -75,6 +79,7 @@ export function useAnalytics() {
   const trackEvent = useCallback(
     async (eventType: OrbicaEvent, payload?: any) => {
       if (typeof window === 'undefined') return;
+      if (!ANALYTICS_URL) return; // no endpoint configured — skip (never hit localhost in prod)
 
       try {
         const { sessionId, anonId } = getSessionIds();
