@@ -1,5 +1,5 @@
 # Analytics ingest + admin API. Build context is the repo root (see docker-compose).
-FROM golang:1.24-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /src
 
 # Build the analytics module standalone (ignore the go.work workspace so we don't
