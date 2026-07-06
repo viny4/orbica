@@ -20,6 +20,7 @@ import (
 	recovermw "github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/joho/godotenv"
 
 	"github.com/orbica/api/internal/config"
 	"github.com/orbica/api/internal/db"
@@ -29,6 +30,7 @@ import (
 )
 
 func main() {
+	_ = godotenv.Load("../../.env") // Load from root if running locally
 	cfg := config.Load()
 
 	ctx := context.Background()
@@ -50,7 +52,7 @@ func main() {
 	go h.Run(stop)
 
 	// Periodically refresh the catalog so newly-synced TLEs come online.
-	go refreshLoop(ctx, pool, h, 30*time.Minute)
+	go refreshLoop(ctx, pool, h, time.Hour)
 
 	// Setup Fiber REST API
 	app := fiber.New(fiber.Config{

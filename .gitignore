@@ -35,6 +35,14 @@ data/seeds/.launch_backfill_offset
 /services/api/rp-api
 /services/api/server
 /services/tracker/rp-tracker
+/services/analytics/main
+/services/analytics/analytics
+
+# Separate repo (deployed independently to Cloudflare Pages)
+/orbica-admin-web/
+
+# Prefer npm lockfile; ignore stray bun lockfile
+web/bun.lock
 
 # Editor
 .idea/

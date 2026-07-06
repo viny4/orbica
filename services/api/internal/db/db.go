@@ -15,9 +15,9 @@ func New(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("parse dsn: %w", err)
 	}
 	cfg.MaxConns = 20
-	cfg.MinConns = 2
+	cfg.MinConns = 0 // Allow pool to drop to 0 so the database can scale to zero
 	cfg.MaxConnLifetime = time.Hour
-	cfg.MaxConnIdleTime = 30 * time.Minute
+	cfg.MaxConnIdleTime = 2 * time.Minute // Close idle conns quickly before Neon auto-suspend
 	cfg.HealthCheckPeriod = time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
