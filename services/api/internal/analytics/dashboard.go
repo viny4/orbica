@@ -41,7 +41,24 @@ func getOverview(c *fiber.Ctx) error {
 	if err := pool.QueryRow(ctx, "SELECT COUNT(DISTINCT session_id) FROM analytics_events WHERE timestamp >= NOW() - INTERVAL '5 minutes'").Scan(&online); err != nil {
 		return dbErr(c, err)
 	}
-	return c.JSON(fiber.Map{"visitors": visitors, "page_views": pageViews, "online": online})
+
+	// Real average session length: mean of (last - first event) per session, in
+	// seconds. Single-event sessions count as 0 (bounces).
+	var avgSession float64
+	if err := pool.QueryRow(ctx, `
+		SELECT COALESCE(AVG(dur), 0) FROM (
+			SELECT EXTRACT(EPOCH FROM (MAX(timestamp) - MIN(timestamp))) AS dur
+			FROM analytics_events GROUP BY session_id
+		) s`).Scan(&avgSession); err != nil {
+		return dbErr(c, err)
+	}
+
+	return c.JSON(fiber.Map{
+		"visitors":            visitors,
+		"page_views":          pageViews,
+		"online":              online,
+		"avg_session_seconds": int(avgSession),
+	})
 }
 
 // getTraffic returns daily page views for the last 30 days (line chart).
