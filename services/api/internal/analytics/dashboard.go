@@ -94,8 +94,10 @@ func getTraffic(c *fiber.Ctx) error {
 // as {<label>: value, "visitors": n}. Used by countries/browsers/devices.
 func countBy(c *fiber.Ctx, column, label string) error {
 	ctx := context.Background()
+	// NULLIF folds empty strings into NULL so '' and NULL don't become two
+	// separate "Unknown" rows.
 	rows, err := pool.Query(ctx, `
-		SELECT COALESCE(`+column+`, 'Unknown'), COUNT(DISTINCT session_id) AS visitors
+		SELECT COALESCE(NULLIF(`+column+`, ''), 'Unknown'), COUNT(DISTINCT session_id) AS visitors
 		FROM analytics_events WHERE NOT is_bot GROUP BY 1 ORDER BY visitors DESC LIMIT 10`)
 	if err != nil {
 		return dbErr(c, err)
