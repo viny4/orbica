@@ -191,19 +191,38 @@ def derive_constellation_specs() -> int:
     return total
 
 
+def prune_tle_snapshots(days: int = 1) -> int:
+    """Drop TLE snapshots older than `days`, but always keep each satellite's
+    newest snapshot — otherwise a satellite that stopped appearing in the
+    CelesTrak feed would lose its TLE entirely and drop out of the live tracker.
+
+    Must run on every sync: the API only ever reads the latest TLE per satellite,
+    so without this the table grows unbounded (it hit 1.5M rows / 377 MB once).
+    """
+    with cursor() as cur:
+        cur.execute(
+            """
+            DELETE FROM tle_snapshots t
+            WHERE t.captured_at < NOW() - (%s || ' days')::interval
+              AND t.captured_at < (
+                    SELECT MAX(t2.captured_at) FROM tle_snapshots t2
+                    WHERE t2.satellite_id = t.satellite_id
+                  )
+            """,
+            (days,),
+        )
+        deleted = cur.rowcount
+    if deleted:
+        log.info("pruned %d stale TLE snapshots (retention: %d day(s))", deleted, days)
+    return deleted
+
+
 def main() -> None:
     group = sys.argv[1] if len(sys.argv) > 1 else "active"
     seed_group(group)
     linked = link_satellites_to_launches()
     log.info("linked %d satellites to launches", linked)
-    
-    # Enforce data retention: keep only the last 1 day of TLE snapshots
-    # to prevent unbounded storage growth on the Neon free tier.
-    with cursor() as cur:
-        cur.execute("DELETE FROM tle_snapshots WHERE captured_at < NOW() - INTERVAL '1 day'")
-        deleted = cur.rowcount
-        if deleted > 0:
-            log.info("cleaned up %d old TLE snapshots (storage retention)", deleted)
+    prune_tle_snapshots()
 
 
 if __name__ == "__main__":

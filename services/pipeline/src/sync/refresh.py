@@ -102,6 +102,11 @@ def main() -> int:
     for group in ("starlink", "gps-ops", "galileo", "oneweb", "glo-ops", "iridium-NEXT", "globalstar", "orbcomm", "beidou", "kuiper"):
         _step(f"tle-{group}", satellites_seed.seed_group, group)
 
+    # Retention: the API only reads the newest TLE per satellite, so drop the
+    # rest. Without this every sync appends ~16k rows forever (it once reached
+    # 1.5M rows / 377 MB and filled the Neon free tier).
+    _step("prune-tle", satellites_seed.prune_tle_snapshots)
+
     # Tie new satellites back to their launch, fill constellation specs + pad
     # operators, refresh news, rebuild summary.
     _step("link-satellites", satellites_seed.link_satellites_to_launches)
