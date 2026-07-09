@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// geo is a resolved approximate location for an IP.
+// geo is a resolved approximate location for an IP. Country is the 2-letter ISO
+// code, to stay consistent with Cloudflare's CF-IPCountry header.
 type geo struct {
 	Country   string
 	Region    string
@@ -75,18 +76,18 @@ func lookupGeo(ip string) (geo, bool) {
 	}
 
 	var body struct {
-		Success   bool    `json:"success"`
-		Country   string  `json:"country"`
-		Region    string  `json:"region"`
-		City      string  `json:"city"`
-		Latitude  float64 `json:"latitude"`
-		Longitude float64 `json:"longitude"`
+		Success     bool    `json:"success"`
+		CountryCode string  `json:"country_code"`
+		Region      string  `json:"region"`
+		City        string  `json:"city"`
+		Latitude    float64 `json:"latitude"`
+		Longitude   float64 `json:"longitude"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil || !body.Success {
 		return geo{}, false
 	}
 	return geo{
-		Country:   body.Country,
+		Country:   body.CountryCode,
 		Region:    body.Region,
 		City:      body.City,
 		Latitude:  body.Latitude,

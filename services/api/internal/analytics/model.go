@@ -19,19 +19,24 @@ type Event struct {
 	Payload         json.RawMessage `json:"payload,omitempty"`
 	Path            string          `json:"path"`
 	Referrer        string          `json:"referrer"`
-	Country         string          `json:"country"`
-	City            string          `json:"city"`
-	Region          string          `json:"region"`
-	Latitude        float64         `json:"latitude"`
-	Longitude       float64         `json:"longitude"`
 	Browser         string          `json:"browser"`
 	OS              string          `json:"os"`
 	Device          string          `json:"device"`
 	ScreenRes       string          `json:"screen_resolution"`
-	IsBot           bool            `json:"is_bot"`
-	CFRay           string          `json:"cf_ray"`
-	IPHash          string          `json:"-"` // hashed from the request IP, never trusted from the body
 	TrackerVersion  string          `json:"tracker_version"`
+
+	// Server-authoritative only. /track is public and unauthenticated, so these
+	// must never be taken from the request body — otherwise anyone can inject a
+	// fake location or clear the bot flag. All are derived from the request
+	// (headers + IP geolocation) in trackEvent/enrichGeo.
+	Country   string  `json:"-"`
+	City      string  `json:"-"`
+	Region    string  `json:"-"`
+	Latitude  float64 `json:"-"`
+	Longitude float64 `json:"-"`
+	IsBot     bool    `json:"-"`
+	CFRay     string  `json:"-"`
+	IPHash    string  `json:"-"`
 
 	// rawIP is the visitor IP captured server-side for geolocation only. It is
 	// never JSON-(de)serialized and never stored — we persist ip_hash + geo.

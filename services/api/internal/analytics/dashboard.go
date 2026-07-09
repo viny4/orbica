@@ -32,13 +32,13 @@ func dbErr(c *fiber.Ctx, err error) error {
 func getOverview(c *fiber.Ctx) error {
 	ctx := context.Background()
 	var visitors, pageViews, online int
-	if err := pool.QueryRow(ctx, "SELECT COUNT(DISTINCT session_id) FROM analytics_events").Scan(&visitors); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT COUNT(DISTINCT session_id) FROM analytics_events WHERE NOT is_bot").Scan(&visitors); err != nil {
 		return dbErr(c, err)
 	}
-	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'page_view'").Scan(&pageViews); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT COUNT(*) FROM analytics_events WHERE event_type = 'page_view' AND NOT is_bot").Scan(&pageViews); err != nil {
 		return dbErr(c, err)
 	}
-	if err := pool.QueryRow(ctx, "SELECT COUNT(DISTINCT session_id) FROM analytics_events WHERE timestamp >= NOW() - INTERVAL '5 minutes'").Scan(&online); err != nil {
+	if err := pool.QueryRow(ctx, "SELECT COUNT(DISTINCT session_id) FROM analytics_events WHERE timestamp >= NOW() - INTERVAL '5 minutes' AND NOT is_bot").Scan(&online); err != nil {
 		return dbErr(c, err)
 	}
 
@@ -48,7 +48,7 @@ func getOverview(c *fiber.Ctx) error {
 	if err := pool.QueryRow(ctx, `
 		SELECT COALESCE(AVG(dur), 0) FROM (
 			SELECT EXTRACT(EPOCH FROM (MAX(timestamp) - MIN(timestamp))) AS dur
-			FROM analytics_events GROUP BY session_id
+			FROM analytics_events WHERE NOT is_bot GROUP BY session_id
 		) s`).Scan(&avgSession); err != nil {
 		return dbErr(c, err)
 	}
@@ -67,7 +67,7 @@ func getTraffic(c *fiber.Ctx) error {
 	rows, err := pool.Query(ctx, `
 		SELECT DATE_TRUNC('day', timestamp) AS date, COUNT(*) AS views
 		FROM analytics_events
-		WHERE event_type = 'page_view' AND timestamp >= NOW() - INTERVAL '30 days'
+		WHERE event_type = 'page_view' AND NOT is_bot AND timestamp >= NOW() - INTERVAL '30 days'
 		GROUP BY date ORDER BY date ASC`)
 	if err != nil {
 		return dbErr(c, err)
@@ -96,7 +96,7 @@ func countBy(c *fiber.Ctx, column, label string) error {
 	ctx := context.Background()
 	rows, err := pool.Query(ctx, `
 		SELECT COALESCE(`+column+`, 'Unknown'), COUNT(DISTINCT session_id) AS visitors
-		FROM analytics_events GROUP BY 1 ORDER BY visitors DESC LIMIT 10`)
+		FROM analytics_events WHERE NOT is_bot GROUP BY 1 ORDER BY visitors DESC LIMIT 10`)
 	if err != nil {
 		return dbErr(c, err)
 	}
@@ -123,7 +123,7 @@ func getTopCities(c *fiber.Ctx) error {
 	rows, err := pool.Query(ctx, `
 		SELECT city, COALESCE(country, '') AS country, COUNT(DISTINCT session_id) AS visitors
 		FROM analytics_events
-		WHERE city IS NOT NULL AND city <> ''
+		WHERE NOT is_bot AND city IS NOT NULL AND city <> ''
 		GROUP BY city, country ORDER BY visitors DESC LIMIT 15`)
 	if err != nil {
 		return dbErr(c, err)
@@ -150,7 +150,7 @@ func getLocations(c *fiber.Ctx) error {
 		       COALESCE(city, '') AS city, COALESCE(country, '') AS country,
 		       COUNT(DISTINCT session_id) AS visitors
 		FROM analytics_events
-		WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+		WHERE NOT is_bot AND latitude IS NOT NULL AND longitude IS NOT NULL
 		GROUP BY latitude, longitude, city, country
 		ORDER BY visitors DESC LIMIT 500`)
 	if err != nil {
@@ -178,7 +178,7 @@ func topPaths(c *fiber.Ctx, where string) error {
 	ctx := context.Background()
 	rows, err := pool.Query(ctx, `
 		SELECT path, COUNT(*) AS views FROM analytics_events
-		WHERE `+where+` AND path IS NOT NULL
+		WHERE `+where+` AND NOT is_bot AND path IS NOT NULL
 		GROUP BY path ORDER BY views DESC LIMIT 10`)
 	if err != nil {
 		return dbErr(c, err)
@@ -211,7 +211,7 @@ func getEvents(c *fiber.Ctx) error {
 	ctx := context.Background()
 	rows, err := pool.Query(ctx, `
 		SELECT timestamp, event_type, path, payload FROM analytics_events
-		WHERE event_type != 'page_view' ORDER BY timestamp DESC LIMIT 20`)
+		WHERE event_type != 'page_view' AND NOT is_bot ORDER BY timestamp DESC LIMIT 20`)
 	if err != nil {
 		return dbErr(c, err)
 	}
@@ -235,7 +235,7 @@ func getTopSearches(c *fiber.Ctx) error {
 	ctx := context.Background()
 	rows, err := pool.Query(ctx, `
 		SELECT payload->>'query' AS term, COUNT(*) AS searches FROM analytics_events
-		WHERE event_type = 'search' AND payload->>'query' IS NOT NULL
+		WHERE event_type = 'search' AND NOT is_bot AND payload->>'query' IS NOT NULL
 		GROUP BY term ORDER BY searches DESC LIMIT 10`)
 	if err != nil {
 		return dbErr(c, err)
