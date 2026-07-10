@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     postgres_url: str = "postgresql://rocketpedia:rocketpedia@localhost:5432/rocketpedia"
     redis_url: str = "redis://localhost:6379"
 
+    # Local-only graph projection. Leave neo4j_uri empty to disable it entirely:
+    # nothing in the API or the scheduled sync may depend on Neo4j being up.
+    neo4j_uri: str = ""
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = ""
+    neo4j_database: str = "neo4j"
+
     ll2_base_url: str = "https://ll.thespacedevs.com/2.3.0"
     # Dev cache: same data + LL2 ids, relaxed limits, but only complete for
     # *reference* entities (agencies/rockets/pads). Launches are recent-only.

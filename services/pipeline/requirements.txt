@@ -9,6 +9,9 @@ tenacity==8.4.2
 python-dateutil==2.9.0.post0
 sgp4==2.23
 
+# local-only graph projection (src/graph); optional at runtime
+neo4j==5.28.1
+
 # task queue + scheduling
 celery==5.4.0
 redis==5.0.7
