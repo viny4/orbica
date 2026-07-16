@@ -2,7 +2,10 @@ name: Orbica Data Sync
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Runs every 4 hours
+    # Every 6 hours. Each run keeps the auto-suspending Neon DB awake for
+    # ~20 min, so cadence is a direct compute cost — 4/day fits the free tier
+    # comfortably, 6/day was borderline. Launch/TLE freshness barely differs.
+    - cron: '0 */6 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub UI
 
 jobs:
