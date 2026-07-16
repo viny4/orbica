@@ -52,8 +52,10 @@ func main() {
 	defer close(stop)
 	go h.Run(stop)
 
-	// Periodically refresh the catalog so newly-synced TLEs come online.
-	go refreshLoop(ctx, pool, h, time.Hour)
+	// Periodically refresh the catalog so newly-synced TLEs come online. New TLEs
+	// only arrive via the 4-hourly sync, so refreshing faster than that just
+	// wakes the auto-suspending database for nothing.
+	go refreshLoop(ctx, pool, h, 4*time.Hour)
 
 	// Setup Fiber REST API
 	app := fiber.New(fiber.Config{
@@ -103,7 +105,7 @@ func main() {
 			}
 			p := c.Path()
 			// Skip live (tracker), admin (sync-logs), and high-cardinality (search).
-			return p == "/health" ||
+			return strings.HasPrefix(p, "/health") || // incl. /health/db — diagnostics must not be stale
 				strings.HasPrefix(p, "/ws") ||
 				strings.HasPrefix(p, "/api/v1/track") ||
 				strings.HasPrefix(p, "/api/v1/admin") || // live analytics — never cache

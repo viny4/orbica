@@ -18,6 +18,7 @@ func New(pool *pgxpool.Pool) *Handlers {
 // Register wires every REST route under /api/v1.
 func (h *Handlers) Register(app *fiber.App) {
 	app.Get("/health", h.Health)
+	app.Get("/health/db", h.HealthDB)
 
 	v1 := app.Group("/api/v1")
 
