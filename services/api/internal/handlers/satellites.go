@@ -79,3 +79,15 @@ func (h *Handlers) SatelliteTLE(c *fiber.Ctx) error {
 			LIMIT 1
 		) t`, key)
 }
+
+// SatelliteSlugs returns every satellite slug in one payload — it feeds the web
+// sitemap, which needs the full URL set (27k+) rather than a page.
+func (h *Handlers) SatelliteSlugs(c *fiber.Ctx) error {
+	return h.queryJSON(c, "[]", `
+		SELECT json_agg(row_to_json(s))
+		FROM (
+			SELECT slug FROM satellites
+			WHERE slug IS NOT NULL AND slug <> ''
+			ORDER BY slug
+		) s`)
+}

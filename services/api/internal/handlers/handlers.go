@@ -36,6 +36,7 @@ func (h *Handlers) Register(app *fiber.App) {
 	v1.Get("/rockets/:id/articles", h.RocketArticles)
 
 	v1.Get("/satellites", h.ListSatellites)
+	v1.Get("/satellites/slugs", h.SatelliteSlugs) // must precede :id
 	v1.Get("/satellites/:id", h.GetSatellite)
 	v1.Get("/satellites/:id/tle", h.SatelliteTLE)
 	v1.Get("/satellites/:id/articles", h.SatelliteArticles)
