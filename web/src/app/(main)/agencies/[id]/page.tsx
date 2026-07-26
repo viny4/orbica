@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { api, getLaunchTitle } from "@/lib/api";
+import { JsonLd, breadcrumbSchema } from "@/components/JsonLd";
 import { safe } from "@/components/EmptyState";
 import { Flag } from "@/components/Flag";
 import { AgencyLogo } from "@/components/AgencyLogo";
@@ -44,6 +45,13 @@ export default async function AgencyDetailPage({ params }: { params: { id: strin
 
   return (
     <div>
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Agencies", path: "/agencies" },
+          { name: String(a.name), path: `/agencies/${a.slug || params.id}` },
+        ])}
+      />
       <header className="mb-12">
         <Link
           href="/agencies"

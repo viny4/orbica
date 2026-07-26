@@ -4,6 +4,7 @@ import { api } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
 import { PageHeader, Chip } from "@/components/ui";
 import { News } from "@/components/News";
+import { JsonLd, breadcrumbSchema } from "@/components/JsonLd";
 import { Flag } from "@/components/Flag";
 
 export const runtime = "edge";
@@ -229,6 +230,13 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
 
   return (
     <div>
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Satellites", path: "/satellites" },
+          { name: String(sat.name), path: `/satellites/${sat.slug || params.id}` },
+        ])}
+      />
       <PageHeader
         eyebrow={[sat.constellation, sat.purpose].filter(Boolean).join(" · ") || "Spacecraft"}
         title={String(sat.name)}

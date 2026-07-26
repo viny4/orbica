@@ -139,6 +139,8 @@ export const api = {
   satellites: (q = "") =>
     get<Satellite[]>(`/satellites${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   satellite: (id: string) => get<Record<string, unknown>>(`/satellites/${id}`),
+  // Full slug list (26k+) — sitemap only; cached a day.
+  satelliteSlugs: () => get<{ slug: string }[]>("/satellites/slugs", 86400),
   constellation: (name: string) => get<Satellite[]>(`/constellations/${encodeURIComponent(name)}`),
   constellations: () => get<{ name: string; count: number }[]>("/constellations"),
   syncLogs: (limit = 50) => get<SyncLog[]>(`/sync-logs?limit=${limit}`, 5),

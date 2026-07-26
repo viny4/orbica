@@ -1,6 +1,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { api } from "@/lib/api";
+import { JsonLd, breadcrumbSchema } from "@/components/JsonLd";
 import { safe } from "@/components/EmptyState";
 import { PageHeader, Chip } from "@/components/ui";
 import { News } from "@/components/News";
@@ -95,6 +96,13 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
 
   return (
     <div>
+      <JsonLd
+        data={breadcrumbSchema([
+          { name: "Home", path: "/" },
+          { name: "Rockets", path: "/rockets" },
+          { name: String(rocket.name), path: `/rockets/${rocket.slug || params.id}` },
+        ])}
+      />
       <PageHeader
         eyebrow={eyebrowContent}
         title={String(rocket.name)}

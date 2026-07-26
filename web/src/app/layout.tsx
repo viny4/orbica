@@ -5,6 +5,7 @@ import "./globals.css";
 import GlobalSearch from "@/components/GlobalSearch";
 import MobileNav from "@/components/MobileNav";
 import AnalyticsTracker from "@/components/track/AnalyticsTracker";
+import { JsonLd, websiteSchema } from "@/components/JsonLd";
 
 // Display + body: Space Grotesk (geometric, space-themed). Telemetry: JetBrains Mono.
 const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
@@ -48,6 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className={`antialiased ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans`}>
+        <JsonLd data={websiteSchema()} />
         <AnalyticsTracker />
         {/* Fixed, transparent header that floats over the hero */}
         <header className="fixed top-0 inset-x-0 z-50">
