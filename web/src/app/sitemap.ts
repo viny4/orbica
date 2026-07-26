@@ -8,8 +8,8 @@ const BASE = "https://orbica.space";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticRoutes: MetadataRoute.Sitemap = [
-    "", "/upcoming", "/timeline", "/agencies", "/rockets", "/satellites", "/track", "/intel", "/search",
-  ].map((p) => ({ url: `${BASE}${p}`, changeFrequency: "daily", priority: p === "" ? 1 : 0.8 }));
+    "", "/iss", "/upcoming", "/timeline", "/agencies", "/rockets", "/satellites", "/track", "/intel", "/search",
+  ].map((p) => ({ url: `${BASE}${p}`, changeFrequency: "daily", priority: p === "" ? 1 : p === "/iss" ? 0.9 : 0.8 }));
 
   const [rockets, agencies, years, satSlugs] = await Promise.all([
     safe(api.rockets(), []),

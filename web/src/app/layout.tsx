@@ -34,6 +34,7 @@ export const metadata: Metadata = {
 };
 
 const NAV = [
+  ["ISS", "/iss"],
   ["Upcoming", "/upcoming"],
   ["Timeline", "/timeline"],
   ["Agencies", "/agencies"],

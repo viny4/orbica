@@ -31,6 +31,20 @@ export function websiteSchema() {
   };
 }
 
+// FAQ rich-result schema — only for pages whose visible content includes these
+// exact questions and answers (Google requires the markup to match the page).
+export function faqSchema(qas: { q: string; a: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: qas.map(({ q, a }) => ({
+      "@type": "Question",
+      name: q,
+      acceptedAnswer: { "@type": "Answer", text: a },
+    })),
+  };
+}
+
 // Breadcrumb trail for a detail page, e.g. Home > Satellites > ISS (ZARYA).
 export function breadcrumbSchema(crumbs: { name: string; path: string }[]) {
   return {
