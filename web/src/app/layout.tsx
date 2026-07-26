@@ -4,6 +4,7 @@ import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import GlobalSearch from "@/components/GlobalSearch";
 import MobileNav from "@/components/MobileNav";
+import SiteNav from "@/components/SiteNav";
 import AnalyticsTracker from "@/components/track/AnalyticsTracker";
 import { JsonLd, websiteSchema } from "@/components/JsonLd";
 
@@ -33,16 +34,17 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://orbica.space" },
 };
 
+// Flat list for the mobile overlay menu; the desktop nav (SiteNav) groups these.
 const NAV = [
-  ["ISS", "/iss"],
-  ["Upcoming", "/upcoming"],
-  ["Timeline", "/timeline"],
-  ["Agencies", "/agencies"],
+  ["ISS Live", "/iss"],
+  ["Track", "/track"],
   ["Rockets", "/rockets"],
   ["Satellites", "/satellites"],
+  ["Agencies", "/agencies"],
   ["Compare", "/compare"],
+  ["Upcoming", "/upcoming"],
+  ["Timeline", "/timeline"],
   ["Failures", "/failures"],
-  ["Track", "/track"],
   ["Intel", "/intel"],
 ];
 
@@ -62,17 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               Orbica
             </Link>
             <div className="flex items-center gap-3 sm:gap-5 md:gap-8">
-              <div className="hidden md:flex items-center gap-8">
-                {NAV.map(([label, href]) => (
-                  <Link
-                    key={href}
-                    href={href}
-                    className="text-[11px] tracking-[0.22em] uppercase text-white/70 hover:text-white transition-colors"
-                  >
-                    {label}
-                  </Link>
-                ))}
-              </div>
+              <SiteNav />
               <GlobalSearch />
               <MobileNav items={NAV} />
             </div>

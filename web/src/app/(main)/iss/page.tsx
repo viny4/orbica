@@ -129,11 +129,17 @@ export default async function IssPage() {
           <h2 className="text-[11px] tracking-[0.25em] uppercase text-white/50 mb-4">
             When can I see it from my location?
           </h2>
-          {hasTle ? (
-            <PassPredictions line1={l1!} line2={l2!} />
-          ) : (
-            <p className="text-white/40 text-sm">Pass predictions need live orbital data.</p>
-          )}
+          <div className="border border-white/10 bg-white/[0.02] p-6">
+            <p className="text-white/60 text-sm leading-relaxed mb-6">
+              The ISS is visible to the naked eye — a bright, steady light crossing the sky in a
+              few minutes. Allow location access and we&apos;ll compute the next passes over you.
+            </p>
+            {hasTle ? (
+              <PassPredictions line1={l1!} line2={l2!} />
+            ) : (
+              <p className="text-white/40 text-sm">Pass predictions need live orbital data.</p>
+            )}
+          </div>
         </div>
       </div>
 
