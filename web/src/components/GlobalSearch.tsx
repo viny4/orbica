@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/clientApi";
 
 interface Result {
   kind: "rocket" | "satellite" | "agency";
@@ -68,7 +69,7 @@ export default function GlobalSearch() {
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/v1/search?q=${encodeURIComponent(term)}`);
+        const r = await apiFetch(`/api/v1/search?q=${encodeURIComponent(term)}`);
         const data: Result[] = r.ok ? await r.json() : [];
         setResults(data.slice(0, 12));
         setActive(0);

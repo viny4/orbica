@@ -4,6 +4,7 @@ export const runtime = "edge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PageHeader, Chip } from "@/components/ui";
+import { apiFetch } from "@/lib/clientApi";
 
 interface SyncLog {
   id: string;
@@ -36,7 +37,7 @@ export default function SyncLogsPage() {
       status: currentStatus
     });
 
-    fetch(`/api/v1/sync-logs?${params.toString()}`)
+    apiFetch(`/api/v1/sync-logs?${params.toString()}`)
       .then((r) => (r.ok ? r.json() : { total: 0, data: [] }))
       .then((res: { total: number, data: SyncLog[] }) => {
         setLogs(res.data || []);

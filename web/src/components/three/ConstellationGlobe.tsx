@@ -11,6 +11,7 @@ import Link from "next/link";
 import ProceduralSatelliteModel from "./ProceduralSatelliteModel";
 import { CountryLabels } from "./CountryLabels";
 import { Footprint } from "./Footprint";
+import { apiFetch } from "@/lib/clientApi";
 
 interface LivePos {
   norad_id: number;
@@ -310,7 +311,7 @@ export default function ConstellationGlobe({ satellites, constellationName }: Co
     setTle(null);
 
     try {
-      const res = await fetch(`/api/v1/satellites/${sat.id}/tle`);
+      const res = await apiFetch(`/api/v1/satellites/${sat.id}/tle`);
       if (!res.ok) return;
       const t = await res.json();
       if (t?.tle_line1 && t?.tle_line2) {

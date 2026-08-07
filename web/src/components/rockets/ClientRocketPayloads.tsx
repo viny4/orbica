@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/clientApi";
 
 interface Payload {
   id: string;
@@ -21,7 +22,7 @@ export function ClientRocketPayloads({ rocketId, initialPayloads }: { rocketId: 
   const loadMore = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/rockets/${rocketId}/payloads?limit=60&offset=${offset}`);
+      const res = await apiFetch(`/api/v1/rockets/${rocketId}/payloads?limit=60&offset=${offset}`);
       if (!res.ok) throw new Error("Failed to fetch payloads");
       const data = await res.json();
       

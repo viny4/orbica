@@ -13,6 +13,7 @@ import ISSHub from "./ISSHub";
 import ISSModel from "@/components/three/ISSModel";
 import ProceduralSatelliteModel from "@/components/three/ProceduralSatelliteModel";
 import { CountryLabels } from "@/components/three/CountryLabels";
+import { apiFetch } from "@/lib/clientApi";
 
 interface LivePos {
   norad_id: number;
@@ -91,7 +92,7 @@ function getElevation(userLat: number, userLng: number, satLat: number, satLng: 
 function useConjunctions() {
   const [data, setData] = useState<any[]>([]);
   useEffect(() => {
-    fetch("/api/v1/intel/conjunctions").then(r => r.ok ? r.json() : []).then(d => { if(Array.isArray(d)) setData(d); }).catch(() => {});
+    apiFetch("/api/v1/intel/conjunctions").then(r => r.ok ? r.json() : []).then(d => { if(Array.isArray(d)) setData(d); }).catch(() => {});
   }, []);
   return data;
 }
@@ -275,7 +276,7 @@ function useTrackerStream() {
 function useMeta() {
   const [meta, setMeta] = useState<Map<number, Meta>>(new Map());
   useEffect(() => {
-    fetch("/api/v1/track/meta").then((r) => (r.ok ? r.json() : [])).then((rows: any[]) => {
+    apiFetch("/api/v1/track/meta").then((r) => (r.ok ? r.json() : [])).then((rows: any[]) => {
       const m = new Map<number, Meta>();
       for (const r of rows) m.set(r.norad, { id: r.id, name: r.name, purpose: r.purpose, constellation: r.constellation, owner: r.owner, orbit: r.orbit });
       setMeta(m);
@@ -721,7 +722,7 @@ export default function GlobalTracker() {
     const m = meta.get(norad);
     if (!m) return;
     try {
-      const r = await fetch(`/api/v1/satellites/${m.id}/tle`);
+      const r = await apiFetch(`/api/v1/satellites/${m.id}/tle`);
       if (!r.ok) return;
       const t = await r.json();
       if (t?.tle_line1 && t?.tle_line2) {

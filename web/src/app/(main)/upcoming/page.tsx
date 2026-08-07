@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui";
 import { getLaunchTitle } from "@/lib/api";
+import { apiFetch } from "@/lib/clientApi";
 
 interface Upcoming {
   id: string;
@@ -90,7 +91,7 @@ export default function UpcomingPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/v1/launches/upcoming?limit=40")
+    apiFetch("/api/v1/launches/upcoming?limit=40")
       .then((r) => (r.ok ? r.json() : []))
       .then((d: Upcoming[]) => setItems(d))
       .catch(() => setItems([]))

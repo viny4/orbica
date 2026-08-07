@@ -3,6 +3,7 @@ export const runtime = "edge";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { apiFetch } from "@/lib/clientApi";
 
 interface Sat {
   id: string;
@@ -59,7 +60,7 @@ export default function SatellitesPage() {
       if (objectType) params.set("object_type", objectType);
       if (q.trim()) params.set("q", q.trim());
       try {
-        const r = await fetch(`/api/v1/satellites?${params}`);
+        const r = await apiFetch(`/api/v1/satellites?${params}`);
         setItems(r.ok ? await r.json() : []);
       } catch {
         setItems([]);

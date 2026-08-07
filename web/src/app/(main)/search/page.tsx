@@ -4,6 +4,7 @@ export const runtime = "edge";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Eyebrow } from "@/components/ui";
+import { apiFetch } from "@/lib/clientApi";
 
 interface Result {
   kind: "rocket" | "satellite" | "agency";
@@ -38,7 +39,7 @@ export default function SearchPage() {
     setLoading(true);
     const t = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/v1/search?q=${encodeURIComponent(term)}`);
+        const r = await apiFetch(`/api/v1/search?q=${encodeURIComponent(term)}`);
         setResults(r.ok ? await r.json() : []);
       } catch {
         setResults([]);
