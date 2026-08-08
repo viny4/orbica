@@ -1,11 +1,25 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import RocketViewer3D from "./RocketViewer3D";
 import type { RocketSpec } from "./rocketConfig";
 
-// Real photograph first (what the vehicle actually looks like), with an
-// interactive 3D model a click away. Falls back to 3D when no photo exists.
+// The launch animation is heavier than the static viewer and most visitors
+// never open it — load it only when its tab is picked.
+const LaunchAnimation = dynamic(() => import("./LaunchAnimation"), {
+  ssr: false,
+  loading: () => (
+    <div className="w-full aspect-[4/3] border border-white/10 bg-[#05070f] grid place-items-center text-white/40 text-xs tracking-[0.2em] uppercase">
+      Preparing launch…
+    </div>
+  ),
+});
+
+type Mode = "photo" | "model" | "launch";
+
+// Real photograph first (what the vehicle actually looks like), with the
+// interactive 3D model and the ascent animation a click away.
 export default function RocketVisual({
   spec,
   imageUrl,
@@ -14,7 +28,13 @@ export default function RocketVisual({
   imageUrl?: string | null;
 }) {
   const hasPhoto = Boolean(imageUrl);
-  const [mode, setMode] = useState<"photo" | "model">(hasPhoto ? "photo" : "model");
+  const [mode, setMode] = useState<Mode>(hasPhoto ? "photo" : "model");
+
+  const tabs: [Mode, string][] = [
+    ...(hasPhoto ? ([["photo", "Photo"]] as [Mode, string][]) : []),
+    ["model", "3D Model"],
+    ["launch", "▶ Launch"],
+  ];
 
   return (
     <div className="relative">
@@ -32,34 +52,29 @@ export default function RocketVisual({
             photograph
           </div>
         </div>
+      ) : mode === "launch" ? (
+        <LaunchAnimation spec={spec} />
       ) : (
         <RocketViewer3D spec={spec} />
       )}
 
-      {hasPhoto && (
-        <div className="absolute top-3 left-3 flex">
+      <div className="absolute top-3 left-3 flex">
+        {tabs.map(([m, label], i) => (
           <button
-            onClick={() => setMode("photo")}
-            className={`text-[10px] tracking-[0.18em] uppercase px-3 py-1.5 border-y border-l transition-colors ${
-              mode === "photo"
+            key={m}
+            onClick={() => setMode(m)}
+            className={`text-[10px] tracking-[0.18em] uppercase px-3 py-1.5 border-y transition-colors ${
+              i === 0 ? "border-l" : ""
+            } ${i === tabs.length - 1 ? "border-r" : ""} ${
+              mode === m
                 ? "bg-white text-black border-white"
-                : "border-white/20 text-white/60 hover:text-white"
+                : "border-white/20 text-white/60 hover:text-white bg-black/30"
             }`}
           >
-            Photo
+            {label}
           </button>
-          <button
-            onClick={() => setMode("model")}
-            className={`text-[10px] tracking-[0.18em] uppercase px-3 py-1.5 border transition-colors ${
-              mode === "model"
-                ? "bg-white text-black border-white"
-                : "border-white/20 text-white/60 hover:text-white"
-            }`}
-          >
-            3D Model
-          </button>
-        </div>
-      )}
+        ))}
+      </div>
     </div>
   );
 }
