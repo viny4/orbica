@@ -14,15 +14,8 @@ import ISSModel from "@/components/three/ISSModel";
 import ProceduralSatelliteModel from "@/components/three/ProceduralSatelliteModel";
 import { CountryLabels } from "@/components/three/CountryLabels";
 import { apiFetch } from "@/lib/clientApi";
+import { decodeLivePositions, type LivePos } from "@/lib/livePositions";
 
-interface LivePos {
-  norad_id: number;
-  name: string;
-  lat: number;
-  lng: number;
-  altitude_km: number;
-  velocity_km_s: number;
-}
 interface Meta {
   id: string; // slug
   name: string;
@@ -254,10 +247,8 @@ function useTrackerStream() {
         if (offsetRef.current) ws?.send(JSON.stringify({ action: "set_time", offset_seconds: offsetRef.current }));
       };
       ws.onmessage = (e) => {
-        try {
-          const d = JSON.parse(e.data) as LivePos[];
-          if (Array.isArray(d) && d.length) setPositions(d);
-        } catch { /* ignore */ }
+        const d = decodeLivePositions(e.data);
+        if (d.length) setPositions(d);
       };
       ws.onclose = () => { setStatus("down"); retry = setTimeout(connect, 3000); };
       ws.onerror = () => ws?.close();
@@ -693,7 +684,7 @@ export default function GlobalTracker() {
 
       return {
         norad_id: p.norad_id,
-        name: p.name,
+        name: meta.get(p.norad_id)?.name ?? String(p.norad_id),
         distance: dist,
         lat: p.lat,
         lng: p.lng,

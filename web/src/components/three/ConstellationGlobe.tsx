@@ -12,15 +12,8 @@ import ProceduralSatelliteModel from "./ProceduralSatelliteModel";
 import { CountryLabels } from "./CountryLabels";
 import { Footprint } from "./Footprint";
 import { apiFetch } from "@/lib/clientApi";
+import { decodeLivePositions, type LivePos } from "@/lib/livePositions";
 
-interface LivePos {
-  norad_id: number;
-  name: string;
-  lat: number;
-  lng: number;
-  altitude_km: number;
-  velocity_km_s: number;
-}
 
 interface SatelliteMeta {
   id: string;
@@ -63,7 +56,7 @@ function useConstellationStream(noradIds: Set<number>) {
 
       ws.onmessage = (e) => {
         try {
-          const d = JSON.parse(e.data) as LivePos[];
+          const d = decodeLivePositions(e.data);
           if (Array.isArray(d)) {
             const updated = new Map<number, LivePos>();
             d.forEach((p) => {

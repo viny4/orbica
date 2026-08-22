@@ -47,13 +47,16 @@ func (c *conn) Offset() time.Duration {
 func (c *conn) Send(positions []propagate.Position) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err := c.ws.WriteJSON(positions); err != nil {
+	// Hand-rolled compact encoding rather than WriteJSON — see encodePositions.
+	if err := c.ws.WriteMessage(websocket.TextMessage, encodePositions(positions)); err != nil {
 		_ = c.ws.Close()
 	}
 }
 
 // Handler returns a fiber.Handler that upgrades and serves the hub.
 func Handler(h *hub.Hub) fiber.Handler {
+	// Per-message deflate: the payload is highly repetitive numeric text, so it
+	// compresses hard and the CPU cost is trivial next to the egress saved.
 	return websocket.New(func(c *websocket.Conn) {
 		client := &conn{ws: c, subs: make(map[int]struct{})}
 		h.Register(client)
@@ -73,7 +76,7 @@ func Handler(h *hub.Hub) fiber.Handler {
 			}
 			client.apply(msg)
 		}
-	})
+	}, websocket.Config{EnableCompression: true})
 }
 
 func (c *conn) apply(msg inbound) {

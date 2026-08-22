@@ -42,7 +42,9 @@ func main() {
 	defer pool.Close()
 
 	// Initialize the WebSocket Hub for real-time satellite tracking
-	h := hub.New(5 * time.Second)
+	// 10s cadence: the globe interpolates between frames, so a slower tick is
+	// visually identical while halving egress on a bandwidth-metered host.
+	h := hub.New(10 * time.Second)
 	if err := loadCatalog(ctx, pool, h); err != nil {
 		log.Printf("warning: could not load TLE catalog: %v", err)
 	}
