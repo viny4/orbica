@@ -1,6 +1,13 @@
 // Thin typed client for the Orbica REST API.
 // Server Components call these directly; the base URL points at the Go API.
 
+import { rpcEnabled, rpcFetch, route } from "./rpc";
+
+// When the primary API fails we stop hammering it for a short window, so an
+// outage costs one timeout rather than one per request.
+const PRIMARY_RETRY_MS = 60_000;
+let primaryDownUntil = 0;
+
 const BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080";
 
@@ -9,18 +16,32 @@ async function get<T>(path: string, revalidate = 300): Promise<T> {
   // The API runs on a free dyno that can briefly cold-start. Retry a couple of
   // times (with a timeout) so a momentary wake-up doesn't render an empty page.
   let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const canFallBack = rpcEnabled() && route(path) !== null;
+  // Skip the primary entirely while it's known-down, so an outage doesn't add a
+  // timeout to every request.
+  const attempts = canFallBack && primaryDownUntil > Date.now() ? 0 : 3;
+
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       const res = await fetch(url, {
         next: { revalidate },
         signal: AbortSignal.timeout(12000),
       });
       if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
+      primaryDownUntil = 0;
       return (await res.json()) as T;
     } catch (e) {
       lastErr = e;
-      if (attempt < 2) await new Promise((r) => setTimeout(r, 2500));
+      if (attempt < attempts - 1) await new Promise((r) => setTimeout(r, 2500));
     }
+  }
+
+  // Primary unreachable: serve the same query from Supabase RPC.
+  if (canFallBack) {
+    if (attempts > 0) primaryDownUntil = Date.now() + PRIMARY_RETRY_MS;
+    const res = await rpcFetch(path);
+    if (!res.ok) throw new Error(`RPC ${path} → ${res.status}`);
+    return (await res.json()) as T;
   }
   throw lastErr;
 }
