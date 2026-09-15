@@ -539,3 +539,19 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
 $fn$;
 GRANT EXECUTE ON FUNCTION public.api_get_launch(uuid) TO anon;
 
+-- Newest TLE per satellite, as compact triples [norad, line1, line2].
+-- Lets the browser propagate every orbit locally with satellite.js instead of
+-- streaming positions from a server: one ~2.3 MB fetch, then zero ongoing
+-- bandwidth, and the tracker keeps working with no Go backend at all.
+CREATE OR REPLACE FUNCTION public.api_all_tles() RETURNS json
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
+  SELECT COALESCE(json_agg(json_build_array(t.norad_id, t.tle_line1, t.tle_line2)), '[]'::json)
+  FROM (
+    SELECT DISTINCT ON (s.norad_id) s.norad_id, ts.tle_line1, ts.tle_line2
+    FROM tle_snapshots ts
+    JOIN satellites s ON s.id = ts.satellite_id
+    WHERE s.norad_id IS NOT NULL
+    ORDER BY s.norad_id, ts.captured_at DESC
+  ) t
+$fn$;
+GRANT EXECUTE ON FUNCTION public.api_all_tles() TO anon;

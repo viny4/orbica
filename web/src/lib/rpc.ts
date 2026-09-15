@@ -79,6 +79,10 @@ export function route(path: string): { fn: string; args: Record<string, unknown>
     case "track":
       return b === "meta" ? { fn: "api_track_meta", args: {} } : null;
 
+    // Bulk TLEs for the client-side tracker (no Go hub needed).
+    case "all-tles":
+      return { fn: "api_all_tles", args: {} };
+
     case "search":
       return { fn: "api_search", args: { p1: q.get("q") || "" } };
 

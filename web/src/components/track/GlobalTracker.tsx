@@ -15,6 +15,7 @@ import ProceduralSatelliteModel from "@/components/three/ProceduralSatelliteMode
 import { CountryLabels } from "@/components/three/CountryLabels";
 import { apiFetch } from "@/lib/clientApi";
 import { decodeLivePositions, type LivePos } from "@/lib/livePositions";
+import { startLocalTracker, rpcEnabled } from "@/lib/localTracker";
 
 interface Meta {
   id: string; // slug
@@ -233,15 +234,30 @@ function useTrackerStream() {
     const url = apiUrl ? apiUrl.replace(/^http/, "ws") : "";
     let ws: WebSocket | null = null;
     let retry: ReturnType<typeof setTimeout>;
+    let stopLocal: (() => void) | undefined;
+    let failures = 0;
+
+    // No hub reachable: propagate every orbit in the browser instead. Same
+    // positions, no server — see lib/localTracker.
+    const goLocal = () => {
+      if (stopLocal || !rpcEnabled()) return;
+      setStatus("live");
+      stopLocal = startLocalTracker(setPositions, () => offsetRef.current);
+    };
+
     const connect = () => {
+      if (stopLocal) return; // already running locally
+      if (!url) { goLocal(); return; }
       try {
         ws = new WebSocket(`${url}/ws`);
       } catch {
         setStatus("down");
+        goLocal();
         return;
       }
       wsRef.current = ws;
       ws.onopen = () => {
+        failures = 0;
         setStatus("live");
         ws?.send(JSON.stringify({ action: "subscribe_all" }));
         if (offsetRef.current) ws?.send(JSON.stringify({ action: "set_time", offset_seconds: offsetRef.current }));
@@ -250,11 +266,16 @@ function useTrackerStream() {
         const d = decodeLivePositions(e.data);
         if (d.length) setPositions(d);
       };
-      ws.onclose = () => { setStatus("down"); retry = setTimeout(connect, 3000); };
+      ws.onclose = () => {
+        setStatus("down");
+        // One retry for a transient drop, then fall back for good.
+        if (++failures >= 2) goLocal();
+        else retry = setTimeout(connect, 3000);
+      };
       ws.onerror = () => ws?.close();
     };
     connect();
-    return () => { clearTimeout(retry); ws?.close(); };
+    return () => { clearTimeout(retry); ws?.close(); stopLocal?.(); };
   }, []);
   const setOffset = useCallback((seconds: number) => {
     offsetRef.current = seconds;
