@@ -4,6 +4,8 @@ export const runtime = "edge";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/clientApi";
+import { SafeImg } from "@/components/SafeImg";
+import { SatelliteGlyph, glyphSeed } from "@/components/satellites/SatelliteGlyph";
 
 interface Sat {
   id: string;
@@ -17,6 +19,7 @@ interface Sat {
   owner_code: string | null;
   object_type: string | null;
   launch_year: number | null;
+  image_url: string | null;
 }
 
 const PURPOSES = [
@@ -38,6 +41,18 @@ function Select({ value, onChange, options }: { value: string; onChange: (v: str
         <option key={v} value={v} className="bg-[#06080f]">{l}</option>
       ))}
     </select>
+  );
+}
+
+function Glyph({ s }: { s: Sat }) {
+  return (
+    <SatelliteGlyph
+      name={s.name}
+      purpose={s.purpose}
+      orbitType={s.orbit_type}
+      objectType={s.object_type}
+      seed={glyphSeed(s.norad_id, s.slug)}
+    />
   );
 }
 
@@ -81,8 +96,10 @@ export default function SatellitesPage() {
       <p className="text-[11px] tracking-[0.35em] uppercase text-[var(--color-space-accent-2)]/75">
         The Live Sky · 26,000+ objects
       </p>
-      <div className="flex items-end justify-between gap-4 mt-4 mb-8">
-        <h1 className="font-light uppercase leading-[0.95] tracking-tight text-5xl sm:text-6xl">Satellites</h1>
+      {/* Wraps on narrow screens: the title and the nowrap link together overflow
+          a phone viewport if they are forced onto one row. */}
+      <div className="flex flex-wrap items-end justify-between gap-4 mt-4 mb-8">
+        <h1 className="font-light uppercase leading-[0.95] tracking-tight text-4xl sm:text-6xl">Satellites</h1>
         <Link
           href="/track"
           className="mb-1 inline-block border border-white/70 px-6 py-3 text-[11px] tracking-[0.25em] uppercase text-white hover:bg-white hover:text-black transition-colors whitespace-nowrap"
@@ -141,24 +158,40 @@ export default function SatellitesPage() {
             <Link
               key={s.id}
               href={`/satellites/${s.slug}`}
-              className="group bg-[#06080f] p-4 hover:bg-[#0c1322] transition-colors"
+              className="group block bg-[#06080f] hover:bg-[#0c1322] transition-colors"
             >
-              <div className="flex items-start justify-between gap-2">
-                <span className="font-light truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
-                  {s.name}
-                </span>
-                <span
-                  className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                    s.status === "active" ? "bg-emerald-400" : "bg-white/25"
-                  }`}
-                  title={s.status ?? ""}
-                />
+              {/* Barely 3% of the catalogue has a photograph — the rest get a
+                  generated diagram, which also catches a dead CDN URL. */}
+              <div className="relative aspect-[16/10] overflow-hidden bg-gradient-to-b from-[#0a1020] to-[#05070f]">
+                {s.image_url ? (
+                  <SafeImg
+                    src={s.image_url}
+                    alt={s.name}
+                    className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-[1.03] transition-all duration-500"
+                    fallback={<Glyph s={s} />}
+                  />
+                ) : (
+                  <Glyph s={s} />
+                )}
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono uppercase tracking-wide text-white/40">
-                {s.purpose && <span className="text-[var(--color-space-accent-2)]/80">{s.purpose}</span>}
-                {s.orbit_type && <span>{s.orbit_type}</span>}
-                {s.constellation && <span>{s.constellation}</span>}
-                {s.launch_year && <span>{s.launch_year}</span>}
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-light truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
+                    {s.name}
+                  </span>
+                  <span
+                    className={`mt-1.5 inline-block w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                      s.status === "active" ? "bg-emerald-400" : "bg-white/25"
+                    }`}
+                    title={s.status ?? ""}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono uppercase tracking-wide text-white/40">
+                  {s.purpose && <span className="text-[var(--color-space-accent-2)]/80">{s.purpose}</span>}
+                  {s.orbit_type && <span>{s.orbit_type}</span>}
+                  {s.constellation && <span>{s.constellation}</span>}
+                  {s.launch_year && <span>{s.launch_year}</span>}
+                </div>
               </div>
             </Link>
           ))}

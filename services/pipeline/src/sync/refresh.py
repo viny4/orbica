@@ -80,7 +80,7 @@ def main() -> int:
     from src.db.pool import refresh_year_summary
     from src.seed import (
         articles, enrich_derived, enrich_rocket_specs, enrich_spacetrack,
-        historical_seed, satellites_seed,
+        enrich_wikidata_images, historical_seed, satellites_seed,
     )
 
     since = (datetime.now(timezone.utc) - timedelta(days=RECENT_DAYS)).strftime("%Y-%m-%d")
@@ -118,6 +118,8 @@ def main() -> int:
     _step("rocket-specs", enrich_rocket_specs.enrich)
     # Space-Track SATCAT: decay dates + RCS size class (best-effort; needs creds).
     _step("space-track", enrich_spacetrack.enrich)
+    # Wikidata photos for satellites we have no image for yet (one SPARQL call).
+    _step("wikidata-images", enrich_wikidata_images.enrich)
     critical_ok &= _step("news", articles.ingest)
     _step("year-summary", refresh_year_summary)
 

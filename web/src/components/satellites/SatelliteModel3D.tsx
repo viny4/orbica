@@ -5,24 +5,12 @@ import { OrbitControls, Html } from "@react-three/drei";
 import { Suspense, useMemo } from "react";
 import { useInView } from "@/components/three/useInView";
 import ISSModel from "@/components/three/ISSModel";
+import { profile } from "./satelliteProfile";
 
 export interface SatModelSpec {
   purpose?: string | null;
   orbitType?: string | null;
   name?: string | null;
-}
-
-// Palette + body feature derived from the spacecraft's purpose.
-function profile(purpose?: string | null) {
-  const p = (purpose || "").toLowerCase();
-  if (p.includes("comm")) return { body: "#c8a23a", feature: "dish" as const };
-  if (p.includes("navigation")) return { body: "#cdd3df", feature: "antenna" as const };
-  if (p.includes("weather")) return { body: "#e7ecf5", feature: "sensor" as const };
-  if (p.includes("earth")) return { body: "#3a4a63", feature: "sensor" as const };
-  if (p.includes("telescope") || p.includes("science")) return { body: "#9aa7bd", feature: "telescope" as const };
-  if (p.includes("human")) return { body: "#d7dbe2", feature: "module" as const };
-  if (p.includes("planetary")) return { body: "#b8962f", feature: "dish" as const };
-  return { body: "#aab4c8", feature: "antenna" as const };
 }
 
 function Satellite({ purpose }: { purpose?: string | null }) {

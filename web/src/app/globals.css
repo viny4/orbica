@@ -39,9 +39,15 @@ body {
     radial-gradient(circle at 80% 0%, rgba(125, 249, 255, 0.06), transparent 35%);
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* Must stay inside @layer base. Unlayered CSS outranks every cascade layer, and
+   `@import "tailwindcss"` puts all utilities in layers — so an unlayered `a`
+   rule silently beats `text-black` and friends on every link, leaving e.g. the
+   homepage's white CTA with white-on-white text. */
+@layer base {
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
 }
 
 /* Instagram-style content reveal for streamed-in list items */
