@@ -1,49 +1,69 @@
 // Thin typed client for the Orbica REST API.
 // Server Components call these directly; the base URL points at the Go API.
 
-import { rpcEnabled, rpcFetch, route } from "./rpc";
+import { rpcEnabled, rpcPrimary, rpcFetch, route } from "./rpc";
 
-// When the primary API fails we stop hammering it for a short window, so an
-// outage costs one timeout rather than one per request.
+// When the REST API fails we stop hammering it for a short window, so an outage
+// costs one timeout rather than one per request.
 const PRIMARY_RETRY_MS = 60_000;
-let primaryDownUntil = 0;
+let restDownUntil = 0;
 
 const BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8080";
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:8090";
 
-async function get<T>(path: string, revalidate = 300): Promise<T> {
-  const url = `${BASE}/api/v1${path}`;
-  // The API runs on a free dyno that can briefly cold-start. Retry a couple of
-  // times (with a timeout) so a momentary wake-up doesn't render an empty page.
-  let lastErr: unknown;
-  const canFallBack = rpcEnabled() && route(path) !== null;
-  // Skip the primary entirely while it's known-down, so an outage doesn't add a
-  // timeout to every request.
-  const attempts = canFallBack && primaryDownUntil > Date.now() ? 0 : 3;
+/** Query Supabase. One shot — PostgREST either answers or it doesn't. */
+async function viaRpc<T>(path: string, revalidate: number): Promise<T> {
+  const res = await rpcFetch(path, { revalidate });
+  if (!res.ok) throw new Error(`RPC ${path} → ${res.status}`);
+  return (await res.json()) as T;
+}
 
-  for (let attempt = 0; attempt < attempts; attempt++) {
+/**
+ * Query the Go REST API. It runs on a free dyno that can cold-start, so retry
+ * with a gap — but only when it's the source we're actually relying on.
+ */
+async function viaRest<T>(path: string, revalidate: number, attempts: number): Promise<T> {
+  let lastErr: unknown = new Error(`API ${path} unavailable`);
+  for (let i = 0; i < attempts; i++) {
     try {
-      const res = await fetch(url, {
+      const res = await fetch(`${BASE}/api/v1${path}`, {
         next: { revalidate },
         signal: AbortSignal.timeout(12000),
       });
       if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
-      primaryDownUntil = 0;
+      restDownUntil = 0;
       return (await res.json()) as T;
     } catch (e) {
       lastErr = e;
-      if (attempt < attempts - 1) await new Promise((r) => setTimeout(r, 2500));
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 2500));
+    }
+  }
+  throw lastErr;
+}
+
+async function get<T>(path: string, revalidate = 300): Promise<T> {
+  const canRpc = rpcEnabled() && route(path) !== null;
+
+  if (canRpc && rpcPrimary()) {
+    try {
+      return await viaRpc<T>(path, revalidate);
+    } catch (err) {
+      // Supabase is down or the function is missing. The REST API may still be
+      // up; give it one quick try rather than rendering an error.
+      if (!BASE) throw err;
+      return await viaRest<T>(path, revalidate, 1);
     }
   }
 
-  // Primary unreachable: serve the same query from Supabase RPC.
-  if (canFallBack) {
-    if (attempts > 0) primaryDownUntil = Date.now() + PRIMARY_RETRY_MS;
-    const res = await rpcFetch(path);
-    if (!res.ok) throw new Error(`RPC ${path} → ${res.status}`);
-    return (await res.json()) as T;
+  // REST-first: either Supabase isn't configured (local dev), this path has no
+  // RPC mapping, or NEXT_PUBLIC_API_PRIMARY=rest was set deliberately.
+  try {
+    return await viaRest<T>(path, revalidate, canRpc && restDownUntil > Date.now() ? 0 : 3);
+  } catch (err) {
+    if (!canRpc) throw err;
+    restDownUntil = Date.now() + PRIMARY_RETRY_MS;
+    return await viaRpc<T>(path, revalidate);
   }
-  throw lastErr;
 }
 
 // --- Domain types (subset of the schema the UI needs) ---

@@ -1,19 +1,29 @@
 // Routes the app's REST-shaped paths to Supabase RPC calls.
 //
-// The Go API is the normal backend. When it isn't reachable (its host suspended
-// the service), the same queries are available as read-only Postgres functions
-// exposed through Supabase's PostgREST — one function per endpoint, running the
-// exact SQL the Go handler ran, so responses are identical and nothing
-// downstream has to change.
+// Every endpoint exists twice: as a Go REST handler, and as a read-only Postgres
+// function exposed through Supabase's PostgREST running that handler's exact
+// SQL. Responses are byte-identical, so nothing downstream cares which answered.
+//
+// Supabase is the primary. It queries Postgres directly with no dyno to wake,
+// and (see rpcFetch) its responses are cacheable, where a call to the REST API
+// costs a round trip through a host that can be cold — or suspended, which is
+// what made every server render pay ~6s of failed retries before this.
 //
 // Configure with NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY.
-// Unset -> routing is disabled and callers use the Go API as before.
+// Unset -> routing is disabled and callers use the Go API, which is what
+// happens in local development. Set NEXT_PUBLIC_API_PRIMARY=rest to put the Go
+// API back in front without unsetting the Supabase config.
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
 export function rpcEnabled(): boolean {
   return Boolean(SUPABASE_URL && ANON);
+}
+
+/** Whether Supabase should be tried before the Go REST API. */
+export function rpcPrimary(): boolean {
+  return rpcEnabled() && process.env.NEXT_PUBLIC_API_PRIMARY !== "rest";
 }
 
 const int = (v: string | null, d: number) => {
@@ -97,18 +107,28 @@ export function route(path: string): { fn: string; args: Record<string, unknown>
   }
 }
 
-/** Call the mapped RPC. Throws if the path has no mapping or the call fails. */
-export async function rpcFetch(path: string, signal?: AbortSignal): Promise<Response> {
+/**
+ * Call the mapped RPC. Throws if the path has no mapping.
+ *
+ * Sent as GET, not POST: every api_* function is declared STABLE, so PostgREST
+ * accepts arguments as query parameters — and a GET is cacheable by Next's Data
+ * Cache and by the CDN, where a POST would re-run the query on every render.
+ * Pass `revalidate` to opt into that cache.
+ */
+export async function rpcFetch(
+  path: string,
+  opts: { signal?: AbortSignal; revalidate?: number } = {},
+): Promise<Response> {
   const r = route(path);
   if (!r) throw new Error(`no RPC mapping for ${path}`);
-  return fetch(`${SUPABASE_URL}/rest/v1/rpc/${r.fn}`, {
-    method: "POST",
-    headers: {
-      apikey: ANON,
-      Authorization: `Bearer ${ANON}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(r.args),
-    signal,
+
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(r.args)) qs.set(k, String(v));
+  const query = qs.toString();
+
+  return fetch(`${SUPABASE_URL}/rest/v1/rpc/${r.fn}${query ? `?${query}` : ""}`, {
+    headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+    signal: opts.signal,
+    ...(opts.revalidate === undefined ? {} : { next: { revalidate: opts.revalidate } }),
   });
 }

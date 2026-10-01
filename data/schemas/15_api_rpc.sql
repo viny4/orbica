@@ -121,7 +121,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
 		) t), null::json)
 $fn$;
 
-CREATE OR REPLACE FUNCTION public.api_satellite_t_l_e(p1 text) RETURNS json
+CREATE OR REPLACE FUNCTION public.api_satellite_tle(p1 text) RETURNS json
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
   SELECT COALESCE((SELECT row_to_json(t)
 		FROM (
@@ -473,7 +473,7 @@ GRANT EXECUTE ON FUNCTION public.api_rocket_launches(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.api_rocket_payloads(text, int, int) TO anon;
 GRANT EXECUTE ON FUNCTION public.api_list_satellites(text, text, text, text, text, text, text, int, int) TO anon;
 GRANT EXECUTE ON FUNCTION public.api_get_satellite(text) TO anon;
-GRANT EXECUTE ON FUNCTION public.api_satellite_t_l_e(text) TO anon;
+GRANT EXECUTE ON FUNCTION public.api_satellite_tle(text) TO anon;
 GRANT EXECUTE ON FUNCTION public.api_satellite_slugs() TO anon;
 GRANT EXECUTE ON FUNCTION public.api_list_agencies() TO anon;
 GRANT EXECUTE ON FUNCTION public.api_get_agency(text) TO anon;
