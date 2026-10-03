@@ -169,6 +169,7 @@ export default function SatellitesPage() {
                     alt={s.name}
                     className="absolute inset-0 w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-[1.03] transition-all duration-500"
                     fallback={<Glyph s={s} />}
+                    placeholder={<Glyph s={s} />}
                   />
                 ) : (
                   <Glyph s={s} />

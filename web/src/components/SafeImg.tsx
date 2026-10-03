@@ -16,13 +16,19 @@ export function SafeImg({
   alt,
   className,
   fallback = null,
+  placeholder = null,
 }: {
   src: string;
   alt: string;
   className?: string;
   fallback?: React.ReactNode;
+  /** Shown until the image paints. Lazy + low-priority loading means that can
+      be seconds after the card itself appears, and an empty box reads as a
+      missing image rather than a loading one. */
+  placeholder?: React.ReactNode;
 }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   // Attach the src after mount so the request starts post-paint and can't hold
   // the window `load` event open behind a slow third-party CDN.
   const [ready, setReady] = useState(false);
@@ -30,15 +36,19 @@ export function SafeImg({
 
   if (failed) return <>{fallback}</>;
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={ready ? src : undefined}
-      alt={alt}
-      loading="lazy"
-      decoding="async"
-      fetchPriority="low"
-      onError={() => setFailed(true)}
-      className={className}
-    />
+    <>
+      {!loaded && placeholder}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={ready ? src : undefined}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        fetchPriority="low"
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        className={className}
+      />
+    </>
   );
 }
