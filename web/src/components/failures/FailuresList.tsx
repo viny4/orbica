@@ -1,96 +1,121 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useDeferredValue } from "react";
 import Link from "next/link";
-import { type LaunchRow } from "@/lib/api";
+import { type LaunchRow, getLaunchTitle } from "@/lib/api";
+import { Outcome, outcomeKey } from "@/components/ui";
 
+type Filter = "all" | "failure" | "partial_failure";
+
+// Filterable anomaly archive. Typing stays responsive on 1,000 rows because the
+// filter runs on a deferred copy of the query, and off-screen rows skip layout
+// (content-visibility) while staying in the DOM.
 export function FailuresList({ failures }: { failures: LaunchRow[] }) {
   const [search, setSearch] = useState("");
-  const [outcomeFilter, setOutcomeFilter] = useState("all");
+  const [filter, setFilter] = useState<Filter>("all");
+  const q = useDeferredValue(search.trim().toLowerCase());
 
-  const filtered = useMemo(() => {
-    return failures.filter((f) => {
-      // Search match
-      const q = search.toLowerCase();
-      const matchesSearch = 
-        !q || 
-        f.name?.toLowerCase().includes(q) || 
-        f.rocket_name?.toLowerCase().includes(q) ||
-        f.agency_name?.toLowerCase().includes(q);
+  const counts = useMemo(() => {
+    let total = 0;
+    let partial = 0;
+    for (const f of failures) {
+      const k = outcomeKey(f.outcome);
+      if (k === "partial_failure") partial++;
+      else total++;
+    }
+    return { all: failures.length, failure: total, partial_failure: partial };
+  }, [failures]);
 
-      // Outcome match
-      const matchesOutcome = 
-        outcomeFilter === "all" || 
-        f.outcome?.toLowerCase().includes(outcomeFilter);
+  const filtered = useMemo(
+    () =>
+      failures.filter((f) => {
+        const k = outcomeKey(f.outcome);
+        if (filter !== "all" && (filter === "partial_failure" ? k !== "partial_failure" : k === "partial_failure")) return false;
+        if (!q) return true;
+        return (
+          f.name?.toLowerCase().includes(q) ||
+          f.mission_name?.toLowerCase().includes(q) ||
+          f.rocket_name?.toLowerCase().includes(q) ||
+          f.agency_name?.toLowerCase().includes(q)
+        );
+      }),
+    [failures, q, filter],
+  );
 
-      return matchesSearch && matchesOutcome;
-    });
-  }, [failures, search, outcomeFilter]);
+  const tabs: [Filter, string][] = [
+    ["all", "All anomalies"],
+    ["failure", "Total failures"],
+    ["partial_failure", "Partial failures"],
+  ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row gap-4">
-        <input
-          type="text"
-          placeholder="Search failures by mission, rocket, or agency..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 bg-black/40 border border-white/10 px-4 py-3 text-sm text-white focus:border-[var(--color-space-accent-2)] outline-none font-light"
-        />
-        <select
-          value={outcomeFilter}
-          onChange={(e) => setOutcomeFilter(e.target.value)}
-          className="bg-black/40 border border-white/10 px-4 py-3 text-sm text-white focus:border-[var(--color-space-accent-2)] outline-none font-light"
-        >
-          <option value="all">All Anomalies</option>
-          <option value="failure">Total Failures</option>
-          <option value="partial">Partial Failures</option>
-        </select>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <label className="flex-1">
+          <span className="sr-only">Search failures</span>
+          <input
+            type="search"
+            placeholder="Search by mission, rocket or agency…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="field w-full py-3"
+          />
+        </label>
+        <div className="flex flex-wrap gap-1 border border-line p-1" role="group" aria-label="Outcome">
+          {tabs.map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setFilter(k)}
+              aria-pressed={filter === k}
+              className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+                filter === k ? "bg-danger/15 text-danger" : "text-ink-3 hover:text-ink"
+              }`}
+            >
+              {label} <span className="text-ink-4">{counts[k]}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="border border-white/10 bg-[#06080f]">
-        <div className="grid grid-cols-[100px_minmax(200px,1fr)_1fr_1fr] bg-white/[0.02] border-b border-white/10 px-4 py-3 text-[10px] uppercase tracking-widest text-[var(--color-space-accent-2)]/80 font-mono">
+      <div className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-4" aria-live="polite">
+        {filtered.length.toLocaleString("en-US")} of {failures.length.toLocaleString("en-US")} records
+      </div>
+
+      <div className="border border-line bg-surface">
+        <div className="hidden grid-cols-[88px_minmax(0,2fr)_minmax(0,1.4fr)_140px] border-b border-line bg-white/[0.02] px-4 py-3 font-mono text-[10px] uppercase tracking-widest text-danger/70 sm:grid">
           <div>Year</div>
           <div>Mission</div>
-          <div className="hidden sm:block">Vehicle & Agency</div>
-          <div>Outcome</div>
+          <div>Vehicle &amp; agency</div>
+          <div className="text-right">Outcome</div>
         </div>
-        
-        <div className="divide-y divide-white/5 max-h-[800px] overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="p-8 text-center text-white/40 tracking-widest uppercase font-mono text-xs">
-              No anomalies found matching criteria.
-            </div>
-          ) : (
-            filtered.map((f: any) => (
-              <Link 
-                key={f.id} 
-                href={`/launches/${f.id}`}
-                className="grid grid-cols-[100px_minmax(200px,1fr)_1fr_1fr] px-4 py-4 hover:bg-white/[0.02] transition-colors group items-center"
-              >
-                <div className="text-xs font-mono text-white/50">{f.launch_year || "—"}</div>
-                <div>
-                  <div className="text-sm font-light text-white group-hover:text-[var(--color-space-accent-2)] transition-colors truncate pr-4">
-                    {f.name}
+
+        {filtered.length === 0 ? (
+          <div className="p-10 text-center font-mono text-xs uppercase tracking-widest text-ink-3">No anomalies match.</div>
+        ) : (
+          <ul className="divide-y divide-line">
+            {filtered.map((f) => (
+              <li key={f.id} className="[content-visibility:auto] [contain-intrinsic-size:auto_72px]">
+                <Link
+                  href={`/launches/${f.id}`}
+                  className="group grid grid-cols-[56px_minmax(0,1fr)] items-center gap-x-3 gap-y-1 px-4 py-4 transition-colors hover:bg-white/[0.02] sm:grid-cols-[88px_minmax(0,2fr)_minmax(0,1.4fr)_140px]"
+                >
+                  <div className="row-span-2 font-mono text-xs text-ink-3 sm:row-span-1">{f.launch_year || "—"}</div>
+                  <div className="truncate text-sm font-light text-ink transition-colors group-hover:text-danger">
+                    {getLaunchTitle(f.mission_name, f.name, f.rocket_name)}
                   </div>
-                </div>
-                <div className="hidden sm:block">
-                  <div className="text-xs text-white/70 truncate">{f.rocket_name || "Unknown Rocket"}</div>
-                  <div className="text-[10px] text-white/40 font-mono uppercase mt-0.5 truncate">{f.agency_name}</div>
-                </div>
-                <div>
-                  <span className={`inline-block px-2 py-1 text-[9px] uppercase tracking-wider font-mono border ${
-                    f.outcome?.toLowerCase().includes("partial") 
-                      ? "border-orange-500/30 text-orange-400 bg-orange-500/10" 
-                      : "border-red-500/30 text-red-400 bg-red-500/10"
-                  }`}>
-                    {f.outcome || "Anomaly"}
-                  </span>
-                </div>
-              </Link>
-            ))
-          )}
-        </div>
+                  <div className="min-w-0 truncate text-xs text-ink-3 sm:text-ink-2">
+                    {f.rocket_name || "Unknown rocket"}
+                    <span className="text-ink-4 sm:hidden"> · {f.agency_name}</span>
+                    <div className="hidden truncate font-mono text-[10px] uppercase text-ink-4 sm:block">{f.agency_name}</div>
+                  </div>
+                  <div className="col-start-2 sm:col-start-auto sm:text-right">
+                    <Outcome outcome={f.outcome} />
+                  </div>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

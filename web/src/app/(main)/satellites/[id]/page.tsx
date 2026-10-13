@@ -1,46 +1,48 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { api } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
-import { PageHeader, Chip } from "@/components/ui";
+import { PageHeader, Chip, SpecList } from "@/components/ui";
 import { News } from "@/components/News";
 import { JsonLd, breadcrumbSchema } from "@/components/JsonLd";
 import { Flag } from "@/components/Flag";
+import SatelliteVisual from "@/components/satellites/SatelliteVisual";
 
 export const runtime = "edge";
 
-import type { Metadata } from "next";
+type Sat = Record<string, any>;
+
+const OPS: Record<string, string> = {
+  "+": "Operational",
+  "-": "Nonoperational",
+  P: "Partially operational",
+  B: "Backup / standby",
+  S: "Spare",
+  X: "Extended mission",
+  D: "Decayed",
+  "?": "Unknown",
+};
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const sat = await safe<Sat | null>(api.satellite(params.id), null);
-  if (!sat) return { title: "Not found — Orbica" };
-  
+  // null → the satellite doesn't exist: 404 here, before streaming starts, so
+  // the response carries a real 404 status. Upstream errors fall through to a
+  // generic title and let the page's error boundary handle them.
+  const sat = await api.satellite(params.id).catch(() => undefined);
+  if (sat === null) notFound();
+  if (!sat) return { title: "Satellite — Orbica" };
   return {
     title: `${sat.name} — Orbica`,
-    description: `Details and real-time orbit tracking for ${sat.name} (NORAD ${sat.norad_id}). Purpose: ${sat.purpose ?? "Unknown"}. Status: ${OPS[sat.ops_status] ?? sat.status ?? "Unknown"}.`,
+    description: `Details and real-time orbit tracking for ${sat.name}${sat.norad_id ? ` (NORAD ${sat.norad_id})` : ""}. Purpose: ${sat.purpose ?? "Unknown"}. Status: ${OPS[sat.ops_status] ?? sat.status ?? "Unknown"}.`,
+    alternates: { canonical: `https://orbica.space/satellites/${sat.slug || params.id}` },
   };
 }
 
-const SatelliteVisual = dynamic(() => import("@/components/satellites/SatelliteVisual"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full aspect-square border border-white/10 bg-black grid place-items-center text-white/40 text-sm">
-      Loading…
-    </div>
-  ),
-});
 const PassPredictions = dynamic(
   () => import("@/components/satellites/PassPredictions").then((m) => m.PassPredictions),
   { ssr: false },
 );
-
-type Sat = Record<string, any>;
-interface Tle {
-  tle_line1?: string;
-  tle_line2?: string;
-}
-
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8090";
 
 // Always format in UTC so the launch date matches the source (and isn't shifted
 // by the server's local timezone).
@@ -58,17 +60,6 @@ function fmtDateTime(d?: string | null) {
   });
 }
 
-const OPS: Record<string, string> = {
-  "+": "Operational",
-  "-": "Nonoperational",
-  P: "Partially operational",
-  B: "Backup / standby",
-  S: "Spare",
-  X: "Extended mission",
-  D: "Decayed",
-  "?": "Unknown",
-};
-
 const PURPOSE_BLURB: Record<string, string> = {
   Communications: "Relays voice, data, internet or broadcast signals between points on Earth.",
   Navigation: "Broadcasts precise timing/positioning signals for global navigation (GNSS).",
@@ -85,37 +76,17 @@ const PURPOSE_BLURB: Record<string, string> = {
 
 const DEEP_SPACE = ["Interstellar", "Heliocentric", "Lunar", "Mercury", "Venus", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Asteroid", "Comet", "Deep Space", "Earth-Moon L-point"];
 
-function Section({ title, rows }: { title: string; rows: [string, React.ReactNode][] }) {
-  const visible = rows.filter(([, v]) => v !== null && v !== undefined && v !== "");
-  if (!visible.length) return null;
-  return (
-    <div>
-      <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-4">{title}</h2>
-      <dl className="divide-y divide-white/10 border-y border-white/10">
-        {visible.map(([k, v]) => (
-          <div key={k} className="flex items-center justify-between gap-4 py-3">
-            <dt className="text-[13px] tracking-wide text-white/45">{k}</dt>
-            <dd className="font-mono text-sm text-right">{v}</dd>
-          </div>
-        ))}
-      </dl>
-    </div>
-  );
-}
+const accentLink = "text-accent hover:underline underline-offset-4";
 
 export default async function SatelliteDetailPage({ params }: { params: { id: string } }) {
+  // The satellite itself is required (outage → error page, missing → 404);
+  // the TLE and news are enrichments that degrade quietly.
   const [sat, tle, articles] = await Promise.all([
-    safe<Sat | null>(api.satellite(params.id), null),
-    safe<Tle | null>(
-      fetch(`${API}/api/v1/satellites/${params.id}/tle`, { next: { revalidate: 3600 } }).then((r) =>
-        r.ok ? r.json() : null,
-      ),
-      null,
-    ),
+    api.satellite(params.id),
+    safe(api.satelliteTle(params.id), null),
     safe(api.satelliteArticles(params.id), []),
   ]);
-
-  if (!sat) return <PageHeader title="Not found" back={{ href: "/satellites", label: "Satellites" }} />;
+  if (!sat) notFound();
 
   const launch = sat.launch as Record<string, any> | null;
   const site = sat.launch_site as Record<string, any> | null;
@@ -152,7 +123,7 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
     [
       "Launched by",
       launch?.rocket_slug ? (
-        <Link href={`/rockets/${launch.rocket_slug}`} className="text-[var(--color-space-accent-2)] hover:underline">
+        <Link href={`/rockets/${launch.rocket_slug}`} className={accentLink}>
           {launch.rocket_name} →
         </Link>
       ) : (
@@ -164,7 +135,7 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
     [
       "Launch record",
       launch?.launch_id ? (
-        <Link href={`/launches/${launch.launch_id}`} className="text-[var(--color-space-accent-2)] hover:underline">
+        <Link href={`/launches/${launch.launch_id}`} className={accentLink}>
           View full launch →
         </Link>
       ) : null,
@@ -180,6 +151,7 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
     ["Dry mass", sat.dry_mass_kg && `${Number(sat.dry_mass_kg).toLocaleString()} kg`],
     ["Power", sat.power_watts && `${Number(sat.power_watts).toLocaleString()} W`],
     ["Design lifetime", sat.expected_lifetime_years && `${sat.expected_lifetime_years} years`],
+    ["Dimensions", sat.dimensions],
     ["Detailed purpose", sat.purpose_detail],
   ];
 
@@ -194,6 +166,7 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
         ["Periapsis", sat.altitude_periapsis_km && `${Number(sat.altitude_periapsis_km).toLocaleString()} km`],
         ["Inclination", sat.inclination_deg && `${sat.inclination_deg}°`],
         ["Orbital period", sat.period_minutes && `${sat.period_minutes} min`],
+        ["Orbit data fetched", tle?.captured_at ? fmtDateTime(tle.captured_at) : null],
       ];
 
   const owner = sat.owner_info as Record<string, any> | null;
@@ -205,7 +178,7 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
       "Owner / operator",
       owner ? (
         <span className="inline-flex items-center gap-2">
-          {owner.country_code && <Flag code={owner.country_code} className="w-4 h-3 rounded-[2px]" />}
+          {owner.country_code && <Flag code={owner.country_code} className="h-3 w-4 rounded-[2px]" />}
           {owner.name}
         </span>
       ) : (
@@ -215,10 +188,7 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
     [
       "Constellation",
       sat.constellation ? (
-        <Link
-          href={`/constellations/${encodeURIComponent(sat.constellation.toLowerCase())}`}
-          className="text-[var(--color-space-accent-2)] hover:underline"
-        >
+        <Link href={`/constellations/${encodeURIComponent(sat.constellation.toLowerCase())}`} className={accentLink}>
           {sat.constellation}
         </Link>
       ) : null,
@@ -227,6 +197,9 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
     ["Status", OPS[sat.ops_status] ?? sat.status],
     ["Decay / reentry", fmtDate(sat.reentry_date)],
   ];
+
+  const statusLabel = OPS[sat.ops_status] ?? sat.status ?? "unknown";
+  const active = sat.status === "active" || sat.ops_status === "+";
 
   return (
     <div>
@@ -243,30 +216,38 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
         back={{ href: "/satellites", label: "Satellites" }}
         meta={
           <span className="flex flex-wrap items-center gap-2">
-            <Chip>{OPS[sat.ops_status] ?? sat.status ?? "unknown"}</Chip>
+            <Chip tone={active ? "success" : "muted"}>{statusLabel}</Chip>
             {sat.purpose && <Chip tone="accent">{sat.purpose}</Chip>}
             {sat.orbit_type && <Chip>{sat.orbit_type}</Chip>}
+            {sat.norad_id && <Chip>NORAD {sat.norad_id}</Chip>}
           </span>
+        }
+        actions={
+          hasTle && !isDeepSpace ? (
+            <Link href="/track" className="btn btn-secondary">
+              Live tracker →
+            </Link>
+          ) : undefined
         }
       />
 
       {(sat.description || blurb) && (
-        <div className="-mt-6 mb-10 max-w-3xl">
-          <p className="text-white/60 font-light leading-relaxed">{sat.description || blurb}</p>
+        <div className="-mt-4 mb-10 max-w-3xl">
+          <p className="font-light leading-relaxed text-ink-2">{sat.description || blurb}</p>
           {sat.wikipedia_url && (
             <a
               href={sat.wikipedia_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-block mt-3 text-[11px] tracking-[0.2em] uppercase text-[var(--color-space-accent-2)]/80 hover:text-[var(--color-space-accent-2)]"
+              className="mt-3 inline-block font-mono text-[11px] uppercase tracking-[0.2em] text-accent/80 hover:text-accent"
             >
-              Read more on Wikipedia →
+              Read more on Wikipedia ↗
             </a>
           )}
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <SatelliteVisual
           name={String(sat.name)}
           line1={tle?.tle_line1}
@@ -275,39 +256,25 @@ export default async function SatelliteDetailPage({ params }: { params: { id: st
           purpose={sat.purpose}
           orbitType={sat.orbit_type}
         />
-        <div className="space-y-8">
-          <Section title="Launch" rows={launchRows} />
-          <Section title={isDeepSpace ? "Trajectory" : "Orbit"} rows={orbitRows} />
+        <div className="space-y-10">
+          <SpecList title="Launch" rows={launchRows} />
+          <SpecList title={isDeepSpace ? "Trajectory" : "Orbit"} rows={orbitRows} />
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Section title="Spacecraft" rows={physicalRows} />
-        <Section title="Identity" rows={idRows} />
+      <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-2">
+        <SpecList title="Spacecraft" rows={physicalRows} />
+        <SpecList title="Identity" rows={idRows} />
       </div>
 
-      <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {defunct && (
-          <div>
-            <h2 className="text-[11px] tracking-[0.3em] uppercase text-red-400/70 mb-4">End of mission</h2>
-            <dl className="divide-y divide-white/10 border-y border-white/10">
-              {endRows
-                .filter(([, v]) => v !== null && v !== undefined && v !== "")
-                .map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between gap-4 py-3">
-                    <dt className="text-[13px] tracking-wide text-white/45">{k}</dt>
-                    <dd className="font-mono text-sm text-right">{v}</dd>
-                  </div>
-                ))}
-            </dl>
-          </div>
-        )}
-      </div>
+      {defunct && (
+        <div className="mt-10 grid grid-cols-1 gap-8 lg:grid-cols-2">
+          <SpecList title="End of mission" rows={endRows} tone="danger" />
+        </div>
+      )}
 
       {/* Visible passes — only meaningful for trackable Earth-orbit objects. */}
-      {hasTle && !isDeepSpace && (
-        <PassPredictions line1={tle!.tle_line1!} line2={tle!.tle_line2!} />
-      )}
+      {hasTle && !isDeepSpace && <PassPredictions line1={tle!.tle_line1!} line2={tle!.tle_line2!} />}
 
       <News articles={articles} heading="Related news" />
     </div>

@@ -316,12 +316,12 @@ export default function ConstellationGlobe({ satellites, constellationName }: Co
   return (
     <div
       ref={ref}
-      className="relative w-full h-[50vh] md:h-full overflow-hidden border border-white/10 bg-black"
+      className="relative w-full h-[50vh] md:h-full overflow-hidden border border-line bg-black"
     >
       {armed && (
         <Canvas
           camera={{ position: [0, 2.2, 5.2], fov: 45 }}
-          dpr={[1, 2]}
+          dpr={[1, 1.5]}
           frameloop={inView ? "always" : "never"}
           raycaster={{ params: { Points: { threshold: 0.08 } } } as any}
         >
@@ -357,34 +357,34 @@ export default function ConstellationGlobe({ satellites, constellationName }: Co
 
       {/* Selected Satellite Telemetry Panel */}
       {tracked && (
-        <div className="absolute bottom-12 left-3 bg-black/75 backdrop-blur border border-[var(--color-space-accent-2)]/45 p-4 w-60 z-10 text-xs font-mono">
+        <div className="absolute bottom-12 left-3 bg-black/75 backdrop-blur border border-accent/45 p-4 w-60 z-10 text-xs font-mono">
           <div className="flex items-start justify-between gap-3">
-            <span className="text-[var(--color-space-accent-2)] font-semibold font-sans">{tracked.name}</span>
-            <button onClick={() => { setTracked(null); setTle(null); setTelemetry(null); }} className="text-white/40 hover:text-white text-[10px]">✕</button>
+            <span className="text-accent font-semibold font-sans">{tracked.name}</span>
+            <button onClick={() => { setTracked(null); setTle(null); setTelemetry(null); }} className="text-ink-4 hover:text-white text-[10px]">✕</button>
           </div>
-          <div className="mt-2 space-y-0.5 text-white/60 text-[10px]">
+          <div className="mt-2 space-y-0.5 text-ink-2 text-[10px]">
             <div>NORAD ID: {tracked.norad_id || "—"}</div>
             <div>STATUS: {tracked.status || "active"}</div>
             <div>ORBIT: {tracked.orbit_type || "—"}</div>
             {telemetry ? (
-              <div className="mt-2 pt-2 border-t border-white/5 space-y-0.5 text-[var(--color-space-accent-2)]">
+              <div className="mt-2 pt-2 border-t border-line space-y-0.5 text-accent">
                 <div>LAT: {telemetry.lat.toFixed(2)}°  LNG: {telemetry.lng.toFixed(2)}°</div>
                 <div>ALT: {telemetry.altKm.toFixed(0)} km</div>
                 <div>VEL: {telemetry.speedKmS.toFixed(2)} km/s</div>
               </div>
             ) : (
-              <div className="mt-2 pt-2 border-t border-white/5 text-white/40">propagating…</div>
+              <div className="mt-2 pt-2 border-t border-line text-ink-4">propagating…</div>
             )}
           </div>
-          <Link href={`/satellites/${tracked.id}`} className="inline-block mt-3 text-[10px] tracking-[0.15em] uppercase text-[var(--color-space-accent-2)]/80 hover:underline">Details →</Link>
+          <Link href={`/satellites/${tracked.id}`} className="inline-block mt-3 text-[10px] tracking-[0.15em] uppercase text-accent/80 hover:underline">Details →</Link>
         </div>
       )}
 
       {/* Status Overlay */}
-      <div className="absolute top-3 right-3 text-[10px] text-white/35 font-mono bg-black/55 backdrop-blur px-2.5 py-1.5 border border-white/5 flex items-center gap-2">
+      <div className="absolute top-3 right-3 text-[10px] text-ink-4 font-mono bg-black/55 backdrop-blur px-2.5 py-1.5 border border-line flex items-center gap-2">
         <span
           className={`inline-block w-2.5 h-2.5 rounded-full ${
-            status === "live" ? "bg-emerald-400" : status === "connecting" ? "bg-amber-400" : "bg-red-400"
+            status === "live" ? "bg-success" : status === "connecting" ? "bg-amber-400" : "bg-red-400"
           }`}
         />
         <span className="uppercase tracking-wider">
@@ -392,7 +392,7 @@ export default function ConstellationGlobe({ satellites, constellationName }: Co
         </span>
       </div>
 
-      <div className="absolute bottom-3 left-3 text-[9px] text-white/30 font-mono">
+      <div className="absolute bottom-3 left-3 text-[9px] text-ink-4 font-mono">
         drag to rotate · scroll to zoom · click node to track
       </div>
     </div>

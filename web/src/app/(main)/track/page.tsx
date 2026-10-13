@@ -7,7 +7,7 @@ export const metadata = { title: "Live Tracker — Orbica" };
 const GlobalTracker = dynamic(() => import("@/components/track/GlobalTracker"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-[78vh] border border-white/10 bg-black grid place-items-center text-white/40 text-sm">
+    <div className="w-full h-[78vh] border border-line bg-black grid place-items-center text-ink-4 text-sm">
       Connecting to live satellite stream…
     </div>
   ),

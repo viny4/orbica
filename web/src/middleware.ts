@@ -1,23 +1,21 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/adminSession";
 
-export function middleware(request: NextRequest) {
-  // Only protect the /sync-logs path
-  if (request.nextUrl.pathname.startsWith("/sync-logs")) {
-    const adminToken = request.cookies.get("admin_token");
-    
-    // In a real app, you would verify a JWT. 
-    // Here we just check if the cookie exists and has the expected value
-    // (set by our login route when credentials match).
-    if (!adminToken || adminToken.value !== "authenticated") {
-      const url = request.nextUrl.clone();
-      url.pathname = "/login";
-      url.searchParams.set("callbackUrl", request.nextUrl.pathname);
-      return NextResponse.redirect(url);
-    }
-  }
+// Guards the admin-only sync log viewer. Requires a valid signed session
+// (see lib/adminSession.ts) — the old check accepted any cookie whose value was
+// the literal "authenticated", which anyone could set by hand.
+export async function middleware(request: NextRequest) {
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  if (await verifySession(token)) return NextResponse.next();
 
-  return NextResponse.next();
+  const url = request.nextUrl.clone();
+  url.pathname = "/login";
+  url.search = "";
+  url.searchParams.set("callbackUrl", request.nextUrl.pathname);
+  const res = NextResponse.redirect(url);
+  res.headers.set("Cache-Control", "no-store");
+  return res;
 }
 
 export const config = {

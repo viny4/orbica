@@ -2,100 +2,74 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { NAV, isActivePath } from "./nav";
 
-// Desktop navigation. Eleven flat links read as a train, so the nav keeps only
-// the destinations (ISS, Track) top-level and groups the rest under two menus.
-// Dropdowns are CSS-driven (hover + focus-within) so no JS state is needed, and
-// stay keyboard-accessible. Mobile keeps the flat overlay menu (MobileNav).
+// Desktop navigation. Destinations (ISS, Track, Intel) stay top-level; the rest
+// group under two menus. Dropdowns are CSS-driven (hover + focus-within) so no
+// JS state is needed, and they stay keyboard-accessible: tabbing onto the
+// trigger opens the panel, tabbing past it closes it. Mobile uses MobileNav.
 
-type Item = { label: string; href: string };
-type Entry =
-  | { label: string; href: string; items?: undefined }
-  | { label: string; items: Item[]; href?: undefined };
-
-const NAV: Entry[] = [
-  { label: "ISS Live", href: "/iss" },
-  { label: "Track", href: "/track" },
-  {
-    label: "Encyclopedia",
-    items: [
-      { label: "Rockets", href: "/rockets" },
-      { label: "Satellites", href: "/satellites" },
-      { label: "Agencies", href: "/agencies" },
-      { label: "Compare", href: "/compare" },
-    ],
-  },
-  {
-    label: "Launches",
-    items: [
-      { label: "Upcoming", href: "/upcoming" },
-      { label: "Timeline", href: "/timeline" },
-      { label: "Failures", href: "/failures" },
-    ],
-  },
-  { label: "Intel", href: "/intel" },
-];
-
-const linkBase = "text-[11px] tracking-[0.22em] uppercase transition-colors";
-
-function TopLink({ href, label, active }: Item & { active: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={`${linkBase} ${active ? "text-white" : "text-white/70 hover:text-white"}`}
-    >
-      {label}
-    </Link>
-  );
-}
+const linkBase = "font-mono text-[11px] uppercase tracking-[0.2em] transition-colors duration-150";
 
 export default function SiteNav() {
   const pathname = usePathname();
-  const isActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <div className="hidden md:flex items-center gap-8">
-      {NAV.map((entry) =>
-        entry.items ? (
-          <div key={entry.label} className="relative group">
-            <button
-              type="button"
-              className={`${linkBase} flex items-center gap-1.5 ${
-                entry.items.some((i) => isActive(i.href))
-                  ? "text-white"
-                  : "text-white/70 group-hover:text-white group-focus-within:text-white"
-              }`}
-              aria-haspopup="true"
+    <nav aria-label="Primary" className="hidden items-center gap-7 md:flex lg:gap-9">
+      {NAV.map((entry) => {
+        if (!entry.items) {
+          const active = isActivePath(pathname, entry.href);
+          return (
+            <Link
+              key={entry.href}
+              href={entry.href}
+              aria-current={active ? "page" : undefined}
+              className={`${linkBase} relative py-2 ${active ? "text-ink" : "text-ink-2 hover:text-ink"}`}
             >
               {entry.label}
-              <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden="true">
+              {active && <span aria-hidden className="absolute inset-x-0 -bottom-px h-px bg-accent" />}
+            </Link>
+          );
+        }
+        const groupActive = entry.items.some((i) => isActivePath(pathname, i.href));
+        return (
+          <div key={entry.label} className="group relative">
+            <button
+              type="button"
+              aria-haspopup="true"
+              className={`${linkBase} relative flex items-center gap-1.5 py-2 ${
+                groupActive ? "text-ink" : "text-ink-2 group-hover:text-ink group-focus-within:text-ink"
+              }`}
+            >
+              {entry.label}
+              <svg width="8" height="8" viewBox="0 0 10 10" fill="none" aria-hidden className="transition-transform duration-200 group-hover:rotate-180 group-focus-within:rotate-180">
                 <path d="M1 3l4 4 4-4" stroke="currentColor" strokeWidth="1.5" />
               </svg>
+              {groupActive && <span aria-hidden className="absolute inset-x-0 -bottom-px h-px bg-accent" />}
             </button>
-            {/* pt-4 bridges the hover gap between trigger and panel */}
-            <div className="absolute left-1/2 -translate-x-1/2 top-full pt-4 hidden group-hover:block group-focus-within:block">
-              <div className="min-w-[180px] border border-white/10 bg-[#0a0f1c]/95 backdrop-blur-xl py-2 shadow-2xl shadow-black/60">
-                {entry.items.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`block px-5 py-2.5 ${linkBase} ${
-                      isActive(item.href)
-                        ? "text-white bg-white/5"
-                        : "text-white/60 hover:text-white hover:bg-white/5"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </div>
+            {/* pt-3 bridges the hover gap between trigger and panel */}
+            <div className="invisible absolute left-1/2 top-full -translate-x-1/2 pt-3 opacity-0 transition-[opacity,visibility] duration-150 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">
+              <ul className="min-w-[260px] border border-line-strong bg-surface/95 p-1.5 shadow-2xl shadow-black/60 backdrop-blur-xl">
+                {entry.items.map((item) => {
+                  const active = isActivePath(pathname, item.href);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        aria-current={active ? "page" : undefined}
+                        className={`block px-4 py-2.5 transition-colors ${active ? "bg-white/[0.05]" : "hover:bg-white/[0.04]"}`}
+                      >
+                        <span className={`${linkBase} block ${active ? "text-accent" : "text-ink"}`}>{item.label}</span>
+                        {item.description && <span className="mt-1 block text-xs text-ink-3">{item.description}</span>}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           </div>
-        ) : (
-          <TopLink key={entry.href} href={entry.href} label={entry.label} active={isActive(entry.href)} />
-        ),
-      )}
-    </div>
+        );
+      })}
+    </nav>
   );
 }

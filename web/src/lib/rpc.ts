@@ -17,6 +17,9 @@
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "") || "";
 const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
 
+/** Supabase's anon role has a 3s statement timeout; anything past ~8s is a dead connection. */
+export const RPC_TIMEOUT_MS = 8_000;
+
 export function rpcEnabled(): boolean {
   return Boolean(SUPABASE_URL && ANON);
 }
@@ -102,9 +105,38 @@ export function route(path: string): { fn: string; args: Record<string, unknown>
     case "stats":
       return b === "overview" ? { fn: "api_stats_overview", args: {} } : null;
 
+    // Public pipeline freshness (last run + per-job last success). Newer than
+    // the other functions — callers fall back to the REST API when a database
+    // hasn't been migrated yet (PostgREST answers 404 for unknown functions).
+    case "sync-status":
+      return { fn: "api_sync_status", args: {} };
+
     default:
       return null;
   }
+}
+
+/**
+ * Abort when either the caller's signal fires or `ms` elapses. Returns the
+ * combined signal and a cleanup that must run once the request settles, so a
+ * finished request doesn't keep a timer (or a listener on a long-lived caller
+ * signal) alive. Hand-rolled because AbortSignal.any() is too new for Safari 16.
+ */
+export function withTimeout(signal: AbortSignal | undefined, ms: number): { signal: AbortSignal; done: () => void } {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(new DOMException("Request timed out", "TimeoutError")), ms);
+  const onAbort = () => ctrl.abort(signal?.reason);
+  if (signal) {
+    if (signal.aborted) ctrl.abort(signal.reason);
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
+  return {
+    signal: ctrl.signal,
+    done: () => {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    },
+  };
 }
 
 /**
@@ -117,7 +149,7 @@ export function route(path: string): { fn: string; args: Record<string, unknown>
  */
 export async function rpcFetch(
   path: string,
-  opts: { signal?: AbortSignal; revalidate?: number } = {},
+  opts: { signal?: AbortSignal; revalidate?: number; timeoutMs?: number } = {},
 ): Promise<Response> {
   const r = route(path);
   if (!r) throw new Error(`no RPC mapping for ${path}`);
@@ -126,9 +158,14 @@ export async function rpcFetch(
   for (const [k, v] of Object.entries(r.args)) qs.set(k, String(v));
   const query = qs.toString();
 
-  return fetch(`${SUPABASE_URL}/rest/v1/rpc/${r.fn}${query ? `?${query}` : ""}`, {
-    headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
-    signal: opts.signal,
-    ...(opts.revalidate === undefined ? {} : { next: { revalidate: opts.revalidate } }),
-  });
+  const t = withTimeout(opts.signal, opts.timeoutMs ?? RPC_TIMEOUT_MS);
+  try {
+    return await fetch(`${SUPABASE_URL}/rest/v1/rpc/${r.fn}${query ? `?${query}` : ""}`, {
+      headers: { apikey: ANON, Authorization: `Bearer ${ANON}` },
+      signal: t.signal,
+      ...(opts.revalidate === undefined ? {} : { next: { revalidate: opts.revalidate } }),
+    });
+  } finally {
+    t.done();
+  }
 }

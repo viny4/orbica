@@ -2,10 +2,13 @@ export const runtime = "edge";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { safe } from "@/components/EmptyState";
-import { PageHeader, Chip, tileClass } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { Flag } from "@/components/Flag";
 
-export const metadata = { title: "Satellite Constellations — Orbica" };
+export const metadata = {
+  title: "Satellite Constellations — Orbica",
+  description: "Starlink, OneWeb, GPS, Galileo and every other satellite constellation — fleet sizes, operators and live 3D views.",
+};
 
 interface ConstellationDetail {
   displayName: string;
@@ -109,41 +112,41 @@ export default async function ConstellationsIndexPage() {
         meta={`${constellations.length} global satellite networks currently operational or deploying`}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5">
+      <div className="tile-grid md:grid-cols-2 lg:grid-cols-3">
         {constellations.map((c) => (
           <Link
             key={c.slug}
             href={`/constellations/${encodeURIComponent(c.slug)}`}
-            className={tileClass}
+            className="tile group p-6"
           >
             <div className="flex flex-col justify-between h-full min-h-[175px]">
               <div>
                 <div className="flex items-center justify-between gap-3 mb-3">
-                  <span className="text-[10px] uppercase font-mono tracking-widest text-[var(--color-space-accent-2)]">
+                  <span className="font-mono text-[10px] uppercase tracking-widest text-accent">
                     {c.orbitType}
                   </span>
-                  <span className="text-[11px] font-mono text-white/50 shrink-0">
+                  <span className="shrink-0 font-mono text-[11px] text-ink-3">
                     {c.count.toLocaleString()} satellites
                   </span>
                 </div>
                 
-                <h2 className="font-light text-xl leading-tight text-white group-hover:text-[var(--color-space-accent-2)] transition-colors">
+                <h2 className="text-xl font-light leading-tight text-ink transition-colors group-hover:text-accent">
                   {c.displayName}
                 </h2>
                 
-                <p className="mt-3 text-xs text-white/45 leading-relaxed font-light line-clamp-3">
+                <p className="mt-3 line-clamp-3 text-xs font-light leading-relaxed text-ink-3">
                   {c.description}
                 </p>
               </div>
 
               <div className="mt-6 flex items-center justify-between">
-                <span className="text-[11px] text-white/55 font-mono flex items-center gap-1.5 truncate pr-2">
+                <span className="flex items-center gap-1.5 truncate pr-2 font-mono text-[11px] text-ink-3">
                   {c.countryCode && <Flag code={c.countryCode} className="w-3.5 h-2.5 rounded-[1px] shrink-0" />}
                   <span className="truncate">{c.operator}</span>
                 </span>
                 
-                <span className="text-[10px] tracking-widest uppercase text-[var(--color-space-accent-2)]/80 group-hover:text-[var(--color-space-accent-2)] transition-colors shrink-0">
-                  Track →
+                <span className="shrink-0 font-mono text-[10px] uppercase tracking-widest text-accent/80 transition-colors group-hover:text-accent">
+                  Explore →
                 </span>
               </div>
             </div>

@@ -8,6 +8,7 @@ import * as THREE from "three";
 import { Earth } from "@/components/three/Earth";
 import { latLngAltToVec3, orbitPath, groundTrack, propagateTLE, type GeoPos } from "@/components/three/geo";
 import { useInView } from "@/components/three/useInView";
+import { WebGLGuard, WebGLFallback } from "@/components/three/WebGLGuard";
 import { Footprint } from "@/components/three/Footprint";
 import ISSHub from "./ISSHub";
 import ISSModel from "@/components/three/ISSModel";
@@ -329,7 +330,7 @@ function UserLocationMarker({ lat, lng }: { lat: number; lng: number }) {
         <meshBasicMaterial color="#10b981" transparent opacity={0.4} side={THREE.DoubleSide} />
       </mesh>
       <Html distanceFactor={5} center>
-        <div className="text-[8px] font-mono tracking-widest text-emerald-400 bg-black/80 px-1.5 py-0.5 border border-emerald-500/20 pointer-events-none uppercase whitespace-nowrap select-none">
+        <div className="text-[8px] font-mono tracking-widest text-success bg-black/80 px-1.5 py-0.5 border border-emerald-500/20 pointer-events-none uppercase whitespace-nowrap select-none">
           You
         </div>
       </Html>
@@ -377,17 +378,33 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }
     return [posArr, colArr];
   }, [shown, mode, meta, dim]);
 
+  // Upload into one growable pair of GPU buffers. Allocating fresh
+  // BufferAttributes every tick left the old GL buffers for the garbage
+  // collector (~400 KB of GPU memory per update on the full catalogue).
+  const capacity = useRef(0);
   useEffect(() => {
     const points = ref.current;
     if (!points) return;
-
     const geom = points.geometry;
-    geom.setAttribute("position", new THREE.BufferAttribute(posAttr, 3));
-    geom.setAttribute("color", new THREE.BufferAttribute(colAttr, 3));
-    geom.attributes.position.needsUpdate = true;
-    geom.attributes.color.needsUpdate = true;
+    const n = posAttr.length / 3;
+    if (n > capacity.current || !geom.getAttribute("position")) {
+      capacity.current = Math.max(n, Math.ceil(capacity.current * 1.25), 1024);
+      const pos = new THREE.BufferAttribute(new Float32Array(capacity.current * 3), 3).setUsage(THREE.DynamicDrawUsage);
+      const col = new THREE.BufferAttribute(new Float32Array(capacity.current * 3), 3).setUsage(THREE.DynamicDrawUsage);
+      geom.dispose(); // releases the previous GL buffers
+      geom.setAttribute("position", pos);
+      geom.setAttribute("color", col);
+    }
+    const pos = geom.getAttribute("position") as THREE.BufferAttribute;
+    const col = geom.getAttribute("color") as THREE.BufferAttribute;
+    (pos.array as Float32Array).set(posAttr);
+    (col.array as Float32Array).set(colAttr);
+    pos.needsUpdate = true;
+    col.needsUpdate = true;
+    geom.setDrawRange(0, n);
     geom.computeBoundingSphere();
   }, [posAttr, colAttr]);
+  useEffect(() => () => ref.current?.geometry.dispose(), []);
 
   const [linePosAttr, setLinePosAttr] = useState<Float32Array | null>(null);
   useEffect(() => {
@@ -400,16 +417,34 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }
       if (meta.get(p.norad_id)?.constellation === "Starlink") slIdx.push(i);
     });
 
+    // Link satellites closer than sqrt(0.05) scene units. Bucket into a grid of
+    // that cell size so each satellite only checks its 27 neighbouring cells —
+    // O(n) instead of the ~25M pair checks the all-pairs loop did per update.
+    const R2 = 0.05;
+    const cell = Math.sqrt(R2);
+    const key = (x: number, y: number, z: number) => `${Math.floor(x / cell)},${Math.floor(y / cell)},${Math.floor(z / cell)}`;
+    const grid = new Map<string, number[]>();
+    for (const i of slIdx) {
+      const k = key(posAttr[i * 3], posAttr[i * 3 + 1], posAttr[i * 3 + 2]);
+      const bucket = grid.get(k);
+      if (bucket) bucket.push(i);
+      else grid.set(k, [i]);
+    }
     const lines: number[] = [];
-    for (let i=0; i<slIdx.length; i++) {
-      const idxA = slIdx[i] * 3;
-      const xA = posAttr[idxA], yA = posAttr[idxA+1], zA = posAttr[idxA+2];
-      for (let j=i+1; j<slIdx.length; j++) {
-        const idxB = slIdx[j] * 3;
-        const xB = posAttr[idxB], yB = posAttr[idxB+1], zB = posAttr[idxB+2];
-        const dx = xA - xB, dy = yA - yB, dz = zA - zB;
-        if (dx*dx + dy*dy + dz*dz < 0.05) lines.push(xA, yA, zA, xB, yB, zB);
-      }
+    for (const a of slIdx) {
+      const xA = posAttr[a * 3], yA = posAttr[a * 3 + 1], zA = posAttr[a * 3 + 2];
+      const cx = Math.floor(xA / cell), cy = Math.floor(yA / cell), cz = Math.floor(zA / cell);
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++)
+          for (let dz = -1; dz <= 1; dz++) {
+            const bucket = grid.get(`${cx + dx},${cy + dy},${cz + dz}`);
+            if (!bucket) continue;
+            for (const b of bucket) {
+              if (b <= a) continue; // each pair once
+              const ex = xA - posAttr[b * 3], ey = yA - posAttr[b * 3 + 1], ez = zA - posAttr[b * 3 + 2];
+              if (ex * ex + ey * ey + ez * ez < R2) lines.push(xA, yA, zA, posAttr[b * 3], posAttr[b * 3 + 1], posAttr[b * 3 + 2]);
+            }
+          }
     }
     setLinePosAttr(new Float32Array(lines));
   }, [posAttr, showMesh, shown, meta]);
@@ -480,31 +515,6 @@ function TrackedSatellite({ norad, name, satMeta, line1, line2, offsetMin, userC
   // Ground track: where the satellite passes over the surface for the next ~95 min.
   const ground = useMemo(() => groundTrack(line1, line2, 95, 220), [line1, line2]);
 
-  const [issPos, setIssPos] = useState<{ lat: number; lng: number } | null>(null);
-
-  useEffect(() => {
-    if (norad !== 25544) return;
-
-    const fetchISS = () => {
-      fetch("https://api.open-notify.org/iss-now.json")
-        .then((res) => (res.ok ? res.json() : null))
-        .then((data) => {
-          if (data && data.message === "success" && data.iss_position) {
-            const lat = parseFloat(data.iss_position.latitude);
-            const lng = parseFloat(data.iss_position.longitude);
-            if (!isNaN(lat) && !isNaN(lng)) {
-              setIssPos({ lat, lng });
-            }
-          }
-        })
-        .catch(() => {});
-    };
-
-    fetchISS();
-    const timer = setInterval(fetchISS, 3000);
-    return () => clearInterval(timer);
-  }, [norad]);
-
   const [nextPass, setNextPass] = useState<{ time: Date, maxEl: number } | null>(null);
   useEffect(() => {
     if (!userCoords || norad === 25544) { setNextPass(null); return; }
@@ -546,17 +556,10 @@ function TrackedSatellite({ norad, name, satMeta, line1, line2, offsetMin, userC
     if (acc.current < 0.25) return;
     acc.current = 0;
 
-    let p: GeoPos | null = null;
-    if (norad === 25544 && issPos) {
-      p = {
-        lat: issPos.lat,
-        lng: issPos.lng,
-        altKm: 420.0,
-        speedKmS: 7.66,
-      };
-    } else {
-      p = propagateTLE(line1, line2, new Date(Date.now() + offsetMin * 60000));
-    }
+    // Every object — the ISS included — is propagated from its TLE, so the
+    // time machine applies uniformly. (The ISS used to poll open-notify, whose
+    // HTTPS endpoint doesn't answer, and which ignored the time offset.)
+    const p: GeoPos | null = propagateTLE(line1, line2, new Date(Date.now() + offsetMin * 60000));
 
     if (p && marker.current) {
       const v = latLngAltToVec3(p.lat, p.lng, p.altKm);
@@ -602,10 +605,10 @@ function Bars({ data, colorOf, onClick, active }: {
         <button key={k} onClick={() => onClick?.(k)} disabled={!onClick}
           className={`w-full text-left ${active === k ? "opacity-100" : active ? "opacity-40" : "opacity-100"}`}>
           <div className="flex items-center justify-between text-[10px] font-mono tracking-wide mb-0.5">
-            <span className="flex items-center gap-1.5 text-white/70 truncate">
+            <span className="flex items-center gap-1.5 text-ink-2 truncate">
               {colorOf && <span className="inline-block w-2 h-2 rounded-full" style={{ background: colorOf(k) }} />}{k}
             </span>
-            <span className="text-white/40">{v.toLocaleString()}</span>
+            <span className="text-ink-4">{v.toLocaleString()}</span>
           </div>
           <div className="h-1 bg-white/5"><div className="h-full transition-all" style={{ width: `${(v / max) * 100}%`, background: colorOf ? colorOf(k) : "#5b8cff" }} /></div>
         </button>
@@ -771,7 +774,7 @@ export default function GlobalTracker() {
           <div className="animate-[ticker_60s_linear_infinite] whitespace-nowrap">
             {conjunctions.concat(conjunctions).map((c, i) => (
               <span key={i} className="mx-8">
-                <span className="font-bold text-red-400">WARNING: </span>
+                <span className="font-bold text-danger">WARNING: </span>
                 {c.sat_a_name} ↔ {c.sat_b_name} · MISS: {c.miss_km.toFixed(2)}km · REL SPEED: {c.rel_speed_kms.toFixed(1)}km/s
               </span>
             ))}
@@ -783,59 +786,59 @@ export default function GlobalTracker() {
       {showPanel && (
         <aside className="order-2 lg:order-1 space-y-6 lg:max-h-[82vh] lg:overflow-y-auto pr-1">
           <div className="flex items-center gap-2 text-xs font-mono">
-            <span className={`inline-block w-2 h-2 rounded-full ${status === "live" ? "bg-emerald-400" : status === "connecting" ? "bg-amber-400" : "bg-red-400"}`} />
-            <span className="text-white/60">{status === "live" ? `${positions.length.toLocaleString()} live` : status}</span>
+            <span className={`inline-block w-2 h-2 rounded-full ${status === "live" ? "bg-success" : status === "connecting" ? "bg-amber-400" : "bg-red-400"}`} />
+            <span className="text-ink-2">{status === "live" ? `${positions.length.toLocaleString()} live` : status}</span>
           </div>
           <div>
-            <div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2">Colour by</div>
+            <div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2">Colour by</div>
             <div className="flex gap-px bg-white/10">
               {(["orbit", "purpose", "constellation"] as ColorMode[]).map((m) => (
                 <button key={m} onClick={() => { setMode(m); setFilter(null); }}
-                  className={`flex-1 text-[10px] tracking-[0.1em] uppercase py-1.5 ${mode === m ? "bg-white text-black" : "bg-[#06080f] text-white/50 hover:text-white"}`}>{m}</button>
+                  className={`flex-1 text-[10px] tracking-[0.1em] uppercase py-1.5 ${mode === m ? "bg-white text-black" : "bg-surface text-ink-3 hover:text-white"}`}>{m}</button>
               ))}
             </div>
           </div>
           <div>
-            <div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2 flex justify-between">
-              <span>{mode}</span>{filter && <button onClick={() => setFilter(null)} className="text-[var(--color-space-accent-2)]">clear</button>}
+            <div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2 flex justify-between">
+              <span>{mode}</span>{filter && <button onClick={() => setFilter(null)} className="text-accent">clear</button>}
             </div>
             <Bars data={modeData} colorOf={colorOfCat} onClick={(k) => setFilter(filter === k ? null : k)} active={filter} />
           </div>
-          <div><div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2">Altitude distribution</div><Bars data={altHist} /></div>
+          <div><div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2">Altitude distribution</div><Bars data={altHist} /></div>
           <div>
-            <div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2 flex justify-between">
+            <div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2 flex justify-between">
               <span>Constellation Mesh</span>
-              <button onClick={() => setShowMesh(!showMesh)} className={`px-2 py-0.5 border ${showMesh ? 'border-[var(--color-space-accent-2)] text-[var(--color-space-accent-2)]' : 'border-white/20 text-white/50'}`}>
+              <button onClick={() => setShowMesh(!showMesh)} className={`px-2 py-0.5 border ${showMesh ? 'border-accent text-accent' : 'border-line-strong text-ink-3'}`}>
                 {showMesh ? 'ON' : 'OFF'}
               </button>
             </div>
           </div>
 
           {/* Geolocation Card */}
-          <div className="border border-white/10 bg-white/[0.015] p-4">
-            <div className="text-[10px] tracking-[0.25em] uppercase text-white/40 mb-2.5 flex justify-between items-center">
+          <div className="border border-line bg-white/[0.015] p-4">
+            <div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2.5 flex justify-between items-center">
               <span>My Location</span>
-              {userCoords && <span className="text-emerald-400 font-mono text-[9px] uppercase">Active</span>}
+              {userCoords && <span className="text-success font-mono text-[9px] uppercase">Active</span>}
             </div>
             
             {!userCoords ? (
               <div className="space-y-2">
-                <p className="text-[11px] text-white/45 font-light leading-relaxed">
+                <p className="text-[11px] text-ink-3 font-light leading-relaxed">
                   Enable location access to show satellites passing near your coordinates in real time.
                 </p>
                 <button
                   onClick={handleShareLocation}
                   disabled={locLoading}
-                  className="w-full text-center text-[10px] font-mono uppercase tracking-widest py-2 bg-white/[0.04] border border-white/10 hover:bg-white/10 hover:border-white/30 text-white transition-colors"
+                  className="w-full text-center text-[10px] font-mono uppercase tracking-widest py-2 bg-white/[0.04] border border-line hover:bg-white/10 hover:border-white/30 text-white transition-colors"
                 >
                   {locLoading ? "Accessing GPS..." : "Share My Location"}
                 </button>
-                {locError && <p className="text-[10px] text-red-400 font-mono">{locError}</p>}
+                {locError && <p className="text-[10px] text-danger font-mono">{locError}</p>}
               </div>
             ) : (
-              <div className="space-y-4 font-mono text-[10px] text-white/60">
+              <div className="space-y-4 font-mono text-[10px] text-ink-2">
 
-                <div className="flex justify-between border-b border-white/5 pb-2">
+                <div className="flex justify-between border-b border-line pb-2">
                   <span>GPS COORDS:</span>
                   <div className="text-right">
                     <div className="text-white">{userCoords.lat.toFixed(3)}°N, {userCoords.lng.toFixed(3)}°E</div>
@@ -844,23 +847,23 @@ export default function GlobalTracker() {
                 </div>
                 
                 <div className="space-y-2">
-                  <div className="text-[9px] tracking-wider text-white/30 uppercase">Closest Overhead</div>
+                  <div className="text-[9px] tracking-wider text-ink-4 uppercase">Closest Overhead</div>
                   <div className="space-y-1.5 max-h-40 overflow-y-auto pr-1">
                     {nearbySats.map((sat) => (
                       <button
                         key={sat.norad_id}
                         onClick={() => track(sat.norad_id)}
-                        className="w-full text-left bg-white/[0.01] hover:bg-white/[0.04] border border-white/5 p-2 flex justify-between items-center transition-colors group"
+                        className="w-full text-left bg-white/[0.01] hover:bg-white/[0.04] border border-line p-2 flex justify-between items-center transition-colors group"
                       >
                         <div className="flex flex-col min-w-0 pr-2">
-                          <span className="truncate text-white/70 group-hover:text-[var(--color-space-accent-2)] transition-colors">{sat.name}</span>
-                          <span className="text-[9px] text-white/40 font-mono mt-0.5">{sat.direction} ({Math.round(sat.bearing)}°)</span>
+                          <span className="truncate text-ink-2 group-hover:text-accent transition-colors">{sat.name}</span>
+                          <span className="text-[9px] text-ink-4 font-mono mt-0.5">{sat.direction} ({Math.round(sat.bearing)}°)</span>
                         </div>
-                        <span className="text-emerald-400 shrink-0 font-semibold">{Math.round(sat.distance).toLocaleString()} km</span>
+                        <span className="text-success shrink-0 font-semibold">{Math.round(sat.distance).toLocaleString()} km</span>
                       </button>
                     ))}
                     {nearbySats.length === 0 && (
-                      <div className="text-[10px] text-white/30 italic">No satellites in range</div>
+                      <div className="text-[10px] text-ink-4 italic">No satellites in range</div>
                     )}
                   </div>
                 </div>
@@ -871,11 +874,12 @@ export default function GlobalTracker() {
       )}
 
       {/* globe — first on mobile (the main view), sidebar drops below it */}
-      <div ref={ref} className="order-1 lg:order-2 relative h-[70vh] lg:h-[82vh] overflow-hidden border border-white/10 bg-black">
+      <div ref={ref} className="order-1 lg:order-2 relative h-[70vh] lg:h-[82vh] overflow-hidden border border-line bg-black">
         {armed && (
+          <WebGLGuard fallback={<WebGLFallback label="The live 3D tracker needs WebGL" />}>
           <Canvas
             camera={{ position: [0, 2, 7], fov: 45 }}
-            dpr={[1, 2]}
+            dpr={[1, 1.5]}
             frameloop={inView ? "always" : "never"}
             raycaster={{ params: { Points: { threshold: 0.08 } } } as any}
           >
@@ -904,6 +908,7 @@ export default function GlobalTracker() {
             </Suspense>
             <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked && viewMode === "orbit"} autoRotateSpeed={0.18} enabled={viewMode === "orbit"} />
           </Canvas>
+          </WebGLGuard>
         )}
 
         {/* Floating view toggles — Sky View (needs your location) + Ride Along (needs a tracked satellite) */}
@@ -911,7 +916,7 @@ export default function GlobalTracker() {
           {userCoords && (
             <button
               onClick={() => setViewMode(v => v === "sky" ? "orbit" : "sky")}
-              className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "sky" ? "bg-emerald-500/20 border-emerald-500 text-emerald-400 shadow-emerald-500/20" : "bg-black/50 border-white/20 text-white/70 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
+              className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "sky" ? "bg-emerald-500/20 border-emerald-500 text-success shadow-emerald-500/20" : "bg-black/50 border-line-strong text-ink-2 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
             >
               {viewMode === "sky" ? "Exit Sky View" : "🔭 Enter Sky View"}
             </button>
@@ -919,7 +924,7 @@ export default function GlobalTracker() {
           {tracked && (
             <button
               onClick={() => setViewMode(v => v === "ride" ? "orbit" : "ride")}
-              className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "ride" ? "bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-cyan-500/20" : "bg-black/50 border-white/20 text-white/70 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
+              className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "ride" ? "bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-cyan-500/20" : "bg-black/50 border-line-strong text-ink-2 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
             >
               {viewMode === "ride" ? "Exit Ride Along" : "🛰 Ride Along"}
             </button>
@@ -931,13 +936,13 @@ export default function GlobalTracker() {
           <div className="relative">
             <input value={query} onChange={(e) => setQuery(e.target.value)}
               placeholder="Track a satellite — ISS, Hubble, Starlink…"
-              className="w-full bg-black/70 backdrop-blur border border-white/15 focus:border-[var(--color-space-accent-2)] outline-none px-4 py-2.5 text-sm placeholder:text-white/30" />
+              className="w-full bg-black/70 backdrop-blur border border-line-strong focus:border-accent outline-none px-4 py-2.5 text-sm placeholder:text-ink-4" />
             {results.length > 0 && (
-              <ul className="absolute top-full mt-1 w-full bg-[#0a0e1a] border border-white/15 max-h-72 overflow-y-auto z-10">
+              <ul className="absolute top-full mt-1 w-full bg-surface border border-line-strong max-h-72 overflow-y-auto z-10">
                 {results.map((s) => (
                   <li key={s.norad}>
-                    <button onClick={() => track(s.norad)} className="w-full text-left px-4 py-2 text-sm hover:bg-white/[0.06] hover:text-[var(--color-space-accent-2)] flex justify-between">
-                      <span className="truncate">{s.name}</span><span className="text-white/30 text-[11px] font-mono">{s.norad}</span>
+                    <button onClick={() => track(s.norad)} className="w-full text-left px-4 py-2 text-sm hover:bg-white/[0.06] hover:text-accent flex justify-between">
+                      <span className="truncate">{s.name}</span><span className="text-ink-4 text-[11px] font-mono">{s.norad}</span>
                     </button>
                   </li>
                 ))}
@@ -955,41 +960,41 @@ export default function GlobalTracker() {
               onClose={() => { setTracked(null); setTelemetry(null); }}
             />
           ) : (
-            <div className="absolute bottom-16 left-3 bg-black/70 backdrop-blur border border-[var(--color-space-accent-2)]/40 p-4 w-64">
+            <div className="absolute bottom-16 left-3 bg-black/70 backdrop-blur border border-accent/40 p-4 w-64">
               <div className="flex items-start justify-between gap-3">
-                <span className="text-[var(--color-space-accent-2)] font-semibold text-sm">{tracked.name}</span>
-                <button onClick={() => { setTracked(null); setTelemetry(null); setNextPass(null); }} className="text-white/40 hover:text-white text-xs">✕</button>
+                <span className="text-accent font-semibold text-sm">{tracked.name}</span>
+                <button onClick={() => { setTracked(null); setTelemetry(null); setNextPass(null); }} className="text-ink-4 hover:text-white text-xs">✕</button>
               </div>
               {telemetry ? (
-                <div className="mt-2 space-y-0.5 text-xs font-mono text-white/65">
+                <div className="mt-2 space-y-0.5 text-xs font-mono text-ink-2">
                   <div>lat {telemetry.lat.toFixed(2)}°  lng {telemetry.lng.toFixed(2)}°</div>
                   <div>alt {telemetry.altKm.toFixed(0)} km</div>
                   <div>vel {telemetry.speedKmS.toFixed(2)} km/s</div>
                 </div>
-              ) : <div className="mt-2 text-xs text-white/40">propagating…</div>}
+              ) : <div className="mt-2 text-xs text-ink-4">propagating…</div>}
               {nextPass && (
-                <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-mono">
+                <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/20 text-success text-[10px] font-mono">
                   <div className="uppercase tracking-widest text-emerald-400/60 mb-0.5">Next Flyover</div>
                   <div>{nextPass.time.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })} (Max El: {Math.round(nextPass.maxEl)}°)</div>
                 </div>
               )}
-              <Link href={`/satellites/${tracked.slug}`} className="inline-block mt-2 text-[11px] tracking-[0.15em] uppercase text-[var(--color-space-accent-2)]/80 hover:text-[var(--color-space-accent-2)]">Details →</Link>
+              <Link href={`/satellites/${tracked.slug}`} className="inline-block mt-2 text-[11px] tracking-[0.15em] uppercase text-accent/80 hover:text-accent">Details →</Link>
             </div>
           )
         )}
 
         {/* panel toggle */}
-        <button onClick={() => setShowPanel((s) => !s)} className="absolute top-3 left-3 text-[10px] tracking-[0.2em] uppercase text-white/50 hover:text-white bg-black/50 border border-white/15 px-2.5 py-1.5">
+        <button onClick={() => setShowPanel((s) => !s)} className="absolute top-3 left-3 text-[10px] tracking-[0.2em] uppercase text-ink-3 hover:text-white bg-black/50 border border-line-strong px-2.5 py-1.5">
           {showPanel ? "Hide stats" : "Stats"}
         </button>
 
         {/* time machine */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 border border-white/15 px-4 py-2">
-          <button onClick={() => setOffsetMin(0)} className={`text-[10px] tracking-[0.2em] uppercase px-2.5 py-1 border transition-colors ${offsetMin === 0 ? "border-emerald-400/60 text-emerald-400" : "border-white/20 text-white/60 hover:text-white"}`}>
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 border border-line-strong px-4 py-2">
+          <button onClick={() => setOffsetMin(0)} className={`text-[10px] tracking-[0.2em] uppercase px-2.5 py-1 border transition-colors ${offsetMin === 0 ? "border-emerald-400/60 text-success" : "border-line-strong text-ink-2 hover:text-white"}`}>
             {offsetMin === 0 ? "● Live" : "Live"}
           </button>
-          <input type="range" min={-360} max={360} step={1} value={offsetMin} onChange={(e) => setOffsetMin(Number(e.target.value))} className="w-40 sm:w-56 accent-[var(--color-space-accent-2)] cursor-pointer" aria-label="Time machine" />
-          <span className="font-mono text-xs text-white/75 tabular-nums w-44 text-center hidden sm:block">
+          <input type="range" min={-360} max={360} step={1} value={offsetMin} onChange={(e) => setOffsetMin(Number(e.target.value))} className="w-40 sm:w-56 accent-accent cursor-pointer" aria-label="Time machine" />
+          <span className="font-mono text-xs text-ink-2 tabular-nums w-44 text-center hidden sm:block">
             {shownTime.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" })}
           </span>
         </div>

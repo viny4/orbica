@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { UAParser } from 'ua-parser-js';
 
 declare global {
   interface Window {
@@ -84,6 +83,9 @@ export function useAnalytics() {
       try {
         const { sessionId, anonId } = getSessionIds();
         
+        // Loaded at send time, not with the page: ua-parser-js is ~13 kB gzip
+        // and every route used to ship it in the root layout bundle.
+        const { UAParser } = await import('ua-parser-js');
         const parser = new UAParser();
         const browserObj = parser.getBrowser();
         const osObj = parser.getOS();

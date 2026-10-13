@@ -26,7 +26,7 @@ export function AgencyLogo({
   if (!src || failed) {
     return (
       <div
-        className={`${className} grid place-items-center bg-white/[0.04] border border-white/10 rounded-md text-white/50 font-light tracking-wide flex-shrink-0`}
+        className={`${className} grid place-items-center bg-white/[0.04] border border-line rounded-md text-ink-3 font-light tracking-wide flex-shrink-0`}
       >
         {initials(name)}
       </div>

@@ -1,16 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import GlobalSearch from "@/components/GlobalSearch";
 import MobileNav from "@/components/MobileNav";
 import SiteNav from "@/components/SiteNav";
+import HeaderFrame from "@/components/HeaderFrame";
+import SiteFooter from "@/components/SiteFooter";
+import RevealObserver from "@/components/RevealObserver";
+import { OrbicaMark } from "@/components/OrbicaMark";
 import AnalyticsTracker from "@/components/track/AnalyticsTracker";
 import { JsonLd, websiteSchema } from "@/components/JsonLd";
 
 // Display + body: Space Grotesk (geometric, space-themed). Telemetry: JetBrains Mono.
-const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk" });
-const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono" });
+// Both are variable fonts, self-hosted by next/font (no third-party request).
+const spaceGrotesk = Space_Grotesk({ subsets: ["latin"], variable: "--font-space-grotesk", display: "swap" });
+const jetbrainsMono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains-mono", display: "swap" });
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://orbica.space"),
@@ -34,43 +39,53 @@ export const metadata: Metadata = {
   alternates: { canonical: "https://orbica.space" },
 };
 
-// Flat list for the mobile overlay menu; the desktop nav (SiteNav) groups these.
-const NAV = [
-  ["ISS Live", "/iss"],
-  ["Track", "/track"],
-  ["Rockets", "/rockets"],
-  ["Satellites", "/satellites"],
-  ["Agencies", "/agencies"],
-  ["Compare", "/compare"],
-  ["Upcoming", "/upcoming"],
-  ["Timeline", "/timeline"],
-  ["Failures", "/failures"],
-  ["Intel", "/intel"],
-];
+export const viewport: Viewport = {
+  themeColor: "#03050a",
+  colorScheme: "dark",
+  width: "device-width",
+  initialScale: 1,
+};
+
+// Runs before first paint: marks the document as JS-capable so scroll-reveal
+// styles only ever hide content for browsers that will reveal it again.
+const JS_FLAG = "document.documentElement.classList.add('js')";
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className={`antialiased ${spaceGrotesk.variable} ${jetbrainsMono.variable} font-sans`}>
+    <html lang="en" className={`${spaceGrotesk.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: JS_FLAG }} />
+      </head>
+      <body className="font-sans antialiased">
+        <a
+          href="#main"
+          className="sr-only z-[200] bg-accent px-4 py-2 font-mono text-xs uppercase tracking-widest text-void focus:not-sr-only focus:fixed focus:left-4 focus:top-4"
+        >
+          Skip to content
+        </a>
         <JsonLd data={websiteSchema()} />
         <AnalyticsTracker />
-        {/* Fixed, transparent header that floats over the hero */}
-        <header className="fixed top-0 inset-x-0 z-50">
-          <nav className="mx-auto max-w-[1400px] flex items-center justify-between px-6 lg:px-10 h-16">
-            <Link
-              href="/"
-              className="text-[13px] font-semibold tracking-[0.32em] uppercase text-white"
-            >
-              Orbica
+        <RevealObserver />
+
+        <HeaderFrame>
+          <div className="shell flex h-16 items-center justify-between gap-4">
+            <Link href="/" className="group flex items-center gap-2.5 text-ink" aria-label="Orbica home">
+              <OrbicaMark className="h-[22px] w-[22px] text-accent transition-transform duration-500 group-hover:rotate-[24deg]" />
+              <span className="text-[13px] font-semibold uppercase tracking-[0.32em]">Orbica</span>
             </Link>
-            <div className="flex items-center gap-3 sm:gap-5 md:gap-8">
+            <div className="flex items-center gap-3 sm:gap-5 lg:gap-9">
               <SiteNav />
               <GlobalSearch />
-              <MobileNav items={NAV} />
+              <MobileNav />
             </div>
-          </nav>
-        </header>
-        {children}
+          </div>
+        </HeaderFrame>
+
+        <main id="main" tabIndex={-1} className="outline-none">
+          {children}
+        </main>
+
+        <SiteFooter />
       </body>
     </html>
   );

@@ -142,7 +142,7 @@ export function PassPredictions({ line1, line2 }: { line1: string; line2: string
 
   return (
     <section className="mt-16">
-      <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-4 border-b border-white/10 pb-3">
+      <h2 className="text-[11px] tracking-[0.3em] uppercase text-ink-3 mb-4 border-b border-line pb-3">
         Visible passes from your location
       </h2>
 
@@ -154,51 +154,51 @@ export function PassPredictions({ line1, line2 }: { line1: string; line2: string
           Find passes near me
         </button>
       )}
-      {status === "locating" && <p className="text-white/50 text-sm">Getting your location…</p>}
-      {status === "computing" && <p className="text-white/50 text-sm">Computing passes…</p>}
+      {status === "locating" && <p className="text-ink-3 text-sm">Getting your location…</p>}
+      {status === "computing" && <p className="text-ink-3 text-sm">Computing passes…</p>}
       {status === "denied" && (
-        <p className="text-white/45 text-sm">Location permission denied — can&apos;t compute local passes.</p>
+        <p className="text-ink-3 text-sm">Location permission denied — can&apos;t compute local passes.</p>
       )}
-      {status === "error" && <p className="text-white/45 text-sm">Couldn&apos;t compute passes for this object.</p>}
+      {status === "error" && <p className="text-ink-3 text-sm">Couldn&apos;t compute passes for this object.</p>}
 
       {status === "done" && (
         <>
-          <p className="text-[11px] tracking-[0.2em] uppercase text-white/35 font-mono mb-1">
+          <p className="text-[11px] tracking-[0.2em] uppercase text-ink-4 font-mono mb-1">
             Next 24h · {place ? `near ${place}` : `from ${coords}`} · above 10° elevation
           </p>
           {place && (
-            <p className="text-[10px] tracking-[0.15em] uppercase text-white/25 font-mono mb-4">{coords}</p>
+            <p className="text-[10px] tracking-[0.15em] uppercase text-ink-4 font-mono mb-4">{coords}</p>
           )}
           {passes.length === 0 ? (
-            <p className="text-white/45 text-sm">No passes above 10° in the next 24 hours from your location.</p>
+            <p className="text-ink-3 text-sm">No passes above 10° in the next 24 hours from your location.</p>
           ) : (
             <>
-              <ul className="divide-y divide-white/10 border-y border-white/10">
+              <ul className="divide-y divide-line border-y border-line">
                 {passes.map((p, i) => (
                   <li key={i} className="flex items-start justify-between gap-4 py-3 text-sm">
                     <div>
                       <div className="font-mono">
-                        {fmt(p.start)} <span className="text-white/30">→</span> {fmt(p.end)}
-                        <span className="text-white/35 ml-2">({dur(p.start, p.end)})</span>
+                        {fmt(p.start)} <span className="text-ink-4">→</span> {fmt(p.end)}
+                        <span className="text-ink-4 ml-2">({dur(p.start, p.end)})</span>
                       </div>
-                      <div className="text-[11px] tracking-[0.12em] uppercase text-white/45 mt-1 font-mono">
-                        rises <span className="text-white/75">{dir(p.startAz)}</span>
-                        <span className="text-white/25"> → </span>
-                        highest <span className="text-white/75">{dir(p.peakAz)}</span>
-                        <span className="text-white/25"> → </span>
-                        sets <span className="text-white/75">{dir(p.endAz)}</span>
+                      <div className="text-[11px] tracking-[0.12em] uppercase text-ink-3 mt-1 font-mono">
+                        rises <span className="text-ink-2">{dir(p.startAz)}</span>
+                        <span className="text-ink-4"> → </span>
+                        highest <span className="text-ink-2">{dir(p.peakAz)}</span>
+                        <span className="text-ink-4"> → </span>
+                        sets <span className="text-ink-2">{dir(p.endAz)}</span>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="font-mono text-[var(--color-space-accent-2)]">peak {p.maxEl}°</div>
-                      <div className="text-[10px] tracking-[0.15em] uppercase text-white/35 mt-1">
+                      <div className="font-mono text-accent">peak {p.maxEl}°</div>
+                      <div className="text-[10px] tracking-[0.15em] uppercase text-ink-4 mt-1">
                         {quality(p.maxEl)}
                       </div>
                     </div>
                   </li>
                 ))}
               </ul>
-              <p className="text-[10px] leading-relaxed text-white/30 mt-3">
+              <p className="text-[10px] leading-relaxed text-ink-4 mt-3">
                 Face the “rises” direction and follow the satellite as it climbs toward “highest” (its peak
                 elevation) and drops to “sets”. Higher peak elevation = brighter and easier to spot. A pass is
                 visible across a wide region, so these directions apply to anyone near {place || "your location"}.

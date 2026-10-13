@@ -62,10 +62,10 @@ export default function OrbitViewer3D({ name, line1, line2 }: Props) {
   return (
     <div
       ref={ref}
-      className="relative w-full aspect-square overflow-hidden border border-white/10 bg-black"
+      className="relative w-full aspect-square overflow-hidden border border-line bg-black"
     >
       {armed ? (
-        <Canvas camera={{ position: [0, 1.5, 6], fov: 45 }} dpr={[1, 2]} frameloop={inView ? "always" : "never"}>
+        <Canvas camera={{ position: [0, 1.5, 6], fov: 45 }} dpr={[1, 1.5]} frameloop={inView ? "always" : "never"}>
           <ambientLight intensity={0.35} />
           <directionalLight position={[5, 3, 5]} intensity={1.6} />
           <Suspense fallback={<Html center>Loading globe…</Html>}>
@@ -85,24 +85,24 @@ export default function OrbitViewer3D({ name, line1, line2 }: Props) {
           <OrbitControls enablePan={false} minDistance={3} maxDistance={14} autoRotate autoRotateSpeed={0.3} />
         </Canvas>
       ) : (
-        <div className="absolute inset-0 grid place-items-center text-white/30 text-xs tracking-[0.2em] uppercase">
+        <div className="absolute inset-0 grid place-items-center text-ink-4 text-xs tracking-[0.2em] uppercase">
           Live orbit
         </div>
       )}
 
-      <div className="absolute top-3 left-3 text-xs font-mono bg-black/50 rounded-lg px-3 py-2 border border-white/10">
-        <div className="text-[var(--color-space-accent-2)] font-semibold mb-1">{name}</div>
+      <div className="absolute bottom-3 left-3 border border-line bg-black/60 px-3 py-2 font-mono text-xs backdrop-blur">
+        <div className="text-accent font-semibold mb-1">{name}</div>
         {pos ? (
-          <div className="space-y-0.5 text-white/55">
+          <div className="space-y-0.5 text-ink-2">
             <div>lat {pos.lat.toFixed(2)}°  lng {pos.lng.toFixed(2)}°</div>
             <div>alt {pos.altKm.toFixed(0)} km</div>
             <div>vel {pos.speedKmS.toFixed(2)} km/s</div>
           </div>
         ) : (
-          <div className="text-white/40">propagating…</div>
+          <div className="text-ink-4">propagating…</div>
         )}
       </div>
-      <div className="absolute bottom-3 right-3 text-[10px] text-white/35 font-mono">
+      <div className="absolute bottom-3 right-3 text-[10px] text-ink-4 font-mono">
         live SGP4 · drag to rotate
       </div>
     </div>

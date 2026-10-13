@@ -1,67 +1,26 @@
 "use client";
 
 // Live ISS position readout, propagated client-side from the latest TLE once a
-// second. Numbers only — the 3D view below carries the visual.
+// second (on the shared page clock). Numbers only — the 3D view carries the visual.
 
-import { useEffect, useState } from "react";
-import {
-  twoline2satrec,
-  propagate,
-  gstime,
-  eciToGeodetic,
-  degreesLat,
-  degreesLong,
-} from "satellite.js";
-
-interface Fix {
-  lat: number;
-  lon: number;
-  altKm: number;
-  speedKmh: number;
-}
-
-function compute(line1: string, line2: string): Fix | null {
-  try {
-    const satrec = twoline2satrec(line1, line2);
-    const now = new Date();
-    const pv = propagate(satrec, now);
-    const pos = pv?.position;
-    const vel = pv?.velocity;
-    if (!pos || typeof pos === "boolean" || !vel || typeof vel === "boolean") return null;
-    const gmst = gstime(now);
-    const geo = eciToGeodetic(pos, gmst);
-    const speed = Math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2) * 3600; // km/s -> km/h
-    return {
-      lat: degreesLat(geo.latitude),
-      lon: degreesLong(geo.longitude),
-      altKm: geo.height,
-      speedKmh: speed,
-    };
-  } catch {
-    return null;
-  }
-}
+import { propagateTLE } from "@/components/three/geo";
+import { useNow } from "@/hooks/useNow";
+import { StatusDot } from "@/components/ui";
 
 function hemi(v: number, pos: string, neg: string) {
   return `${Math.abs(v).toFixed(2)}° ${v >= 0 ? pos : neg}`;
 }
 
 export default function IssLiveStats({ line1, line2 }: { line1: string; line2: string }) {
-  const [fix, setFix] = useState<Fix | null>(null);
-
-  useEffect(() => {
-    const tick = () => setFix(compute(line1, line2));
-    tick();
-    const t = setInterval(tick, 1000);
-    return () => clearInterval(t);
-  }, [line1, line2]);
+  const now = useNow();
+  const fix = now ? propagateTLE(line1, line2, new Date(now)) : null;
 
   const tiles: [string, string][] = fix
     ? [
         ["Latitude", hemi(fix.lat, "N", "S")],
-        ["Longitude", hemi(fix.lon, "E", "W")],
+        ["Longitude", hemi(fix.lng, "E", "W")],
         ["Altitude", `${fix.altKm.toFixed(0)} km`],
-        ["Speed", `${Math.round(fix.speedKmh).toLocaleString()} km/h`],
+        ["Speed", `${Math.round(fix.speedKmS * 3600).toLocaleString("en-US")} km/h`],
       ]
     : [
         ["Latitude", "…"],
@@ -72,17 +31,15 @@ export default function IssLiveStats({ line1, line2 }: { line1: string; line2: s
 
   return (
     <div>
-      <div className="flex items-center gap-2 mb-4">
-        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-        <span className="text-[11px] tracking-[0.25em] uppercase text-white/50">
-          Live position · updates every second
-        </span>
+      <div className="mb-4 flex items-center gap-2.5">
+        <StatusDot tone="success" pulse />
+        <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-3">Live position · updates every second</span>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="tile-grid grid-cols-2 md:grid-cols-4">
         {tiles.map(([label, value]) => (
-          <div key={label} className="border border-white/10 bg-white/[0.03] p-5">
-            <div className="text-[10px] tracking-[0.2em] uppercase text-white/40 mb-2">{label}</div>
-            <div className="text-2xl md:text-3xl font-mono tabular-nums">{value}</div>
+          <div key={label} className="tile p-5">
+            <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-4">{label}</div>
+            <div className="font-mono text-2xl tabular-nums md:text-3xl">{value}</div>
           </div>
         ))}
       </div>

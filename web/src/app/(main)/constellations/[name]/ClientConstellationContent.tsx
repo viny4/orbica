@@ -4,11 +4,12 @@ import { useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { type Satellite } from "@/lib/api";
+import { WebGLGuard, WebGLFallback } from "@/components/three/WebGLGuard";
 
 const ConstellationGlobe = dynamic(() => import("@/components/three/ConstellationGlobe"), {
   ssr: false,
   loading: () => (
-    <div className="w-full h-full bg-white/[0.01] border border-white/10 grid place-items-center text-white/30 text-xs tracking-widest uppercase">
+    <div className="grid h-full w-full place-items-center border border-line bg-white/[0.01] font-mono text-[11px] uppercase tracking-widest text-ink-4">
       Loading 3D space scene…
     </div>
   ),
@@ -52,16 +53,16 @@ export default function ClientConstellationContent({ satellites, stats, constell
       {/* Left side: Stats & List */}
       <div className="flex flex-col space-y-6">
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="tile-grid grid-cols-2">
           {cards.map((c, i) => (
             <div
               key={i}
-              className="border border-white/10 bg-white/[0.015] p-4 flex flex-col justify-between"
+              className="tile flex flex-col justify-between p-4"
             >
-              <span className="text-[10px] uppercase tracking-wider text-white/40 font-mono">
+              <span className="font-mono text-[10px] uppercase tracking-wider text-ink-4">
                 {c.label}
               </span>
-              <span className="text-xl sm:text-2xl font-light text-white mt-2">
+              <span className="mt-2 text-xl font-light tabular-nums text-ink sm:text-2xl">
                 {c.value}
               </span>
             </div>
@@ -69,9 +70,9 @@ export default function ClientConstellationContent({ satellites, stats, constell
         </div>
 
         {/* List Section */}
-        <div className="flex flex-col flex-1 border border-white/10 bg-[#04060b] p-5">
+        <div className="card flex flex-1 flex-col p-5">
           <div className="flex items-center justify-between mb-4 gap-4">
-            <span className="text-[10px] uppercase tracking-[0.25em] text-white/40 font-mono">
+            <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-ink-4">
               Constellation Nodes ({filteredSatellites.length})
             </span>
             <input
@@ -79,37 +80,38 @@ export default function ClientConstellationContent({ satellites, stats, constell
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Filter by name or NORAD..."
-              className="bg-black/60 border border-white/15 px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-[var(--color-space-accent-2)] w-48 sm:w-60"
+              className="field w-44 py-1.5 text-xs sm:w-60"
+              aria-label="Filter satellites by name or NORAD id"
             />
           </div>
 
           {/* List Container */}
-          <div className="flex-1 overflow-y-auto max-h-[360px] lg:max-h-[380px] divide-y divide-white/5 pr-1">
+          <div className="max-h-[360px] flex-1 divide-y divide-line overflow-y-auto pr-1 lg:max-h-[380px]">
             {filteredSatellites.map((s) => (
               <div
                 key={s.id}
-                className="py-2.5 flex items-center justify-between text-xs hover:bg-white/[0.01] transition-colors"
+                className="flex items-center justify-between py-2.5 text-xs transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_44px] hover:bg-white/[0.02]"
               >
                 <div className="min-w-0">
                   <Link
                     href={`/satellites/${s.slug}`}
-                    className="font-light text-white hover:text-[var(--color-space-accent-2)] transition-colors block truncate"
+                    className="block truncate font-light text-ink transition-colors hover:text-accent"
                   >
                     {s.name}
                   </Link>
-                  <span className="text-[10px] font-mono text-white/35">
+                  <span className="font-mono text-[10px] text-ink-4">
                     NORAD {s.norad_id || "—"} · {s.launch_date || "Unknown Date"}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
-                  <span className="text-[10px] font-mono text-white/45">
+                  <span className="font-mono text-[10px] text-ink-3">
                     {s.orbit_type || "—"}
                   </span>
                   <span
                     className={`text-[9px] uppercase tracking-wider font-mono px-1.5 py-0.5 border ${
                       s.status?.toLowerCase() === "active"
-                        ? "border-emerald-500/20 text-emerald-400"
-                        : "border-white/10 text-white/40"
+                        ? "border-success/25 text-success"
+                        : "border-line text-ink-4"
                     }`}
                   >
                     {s.status || "inactive"}
@@ -118,7 +120,7 @@ export default function ClientConstellationContent({ satellites, stats, constell
               </div>
             ))}
             {filteredSatellites.length === 0 && (
-              <div className="text-center py-8 text-white/30 text-xs italic">
+              <div className="py-8 text-center text-xs italic text-ink-4">
                 No matching satellites in this constellation
               </div>
             )}
@@ -128,10 +130,9 @@ export default function ClientConstellationContent({ satellites, stats, constell
 
       {/* Right side: Globe */}
       <div className="flex flex-col h-[50vh] lg:h-full min-h-[400px]">
-        <ConstellationGlobe
-          satellites={satellites}
-          constellationName={constellationName}
-        />
+        <WebGLGuard fallback={<WebGLFallback className="border border-line" label="3D globe needs WebGL" />}>
+          <ConstellationGlobe satellites={satellites} constellationName={constellationName} />
+        </WebGLGuard>
       </div>
     </div>
   );

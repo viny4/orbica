@@ -1,65 +1,69 @@
 import Link from "next/link";
-import dynamic from "next/dynamic";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { api } from "@/lib/api";
 import { JsonLd, breadcrumbSchema } from "@/components/JsonLd";
 import { safe } from "@/components/EmptyState";
-import { PageHeader, Chip } from "@/components/ui";
+import { PageHeader, Chip, SectionHeader, SpecList } from "@/components/ui";
 import { News } from "@/components/News";
 import { ClientRocketPayloads } from "@/components/rockets/ClientRocketPayloads";
+import RocketVisual from "@/components/rockets/RocketVisual";
 
 export const runtime = "edge";
 
-import type { Metadata } from "next";
+type Rocket = Record<string, any>;
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const rocket = await safe<Rocket | null>(api.rocket(params.id), null);
-  if (!rocket) return { title: "Not found — Orbica" };
+  // null → doesn't exist: 404 before streaming begins (real status code).
+  const rocket = await api.rocket(params.id).catch(() => undefined);
+  if (rocket === null) notFound();
+  if (!rocket) return { title: "Rocket — Orbica" };
   const family = rocket.family?.name ? `${rocket.family.name} family` : "";
   const manufacturer = rocket.manufacturer?.name || "";
-  const desc = [manufacturer, family, rocket.status ? `Status: ${rocket.status}` : ""]
-    .filter(Boolean).join(" · ");
-  
+  const desc = [manufacturer, family, rocket.status ? `Status: ${rocket.status}` : ""].filter(Boolean).join(" · ");
   return {
     title: `${rocket.name} — Orbica`,
     description: `Details and specifications for the ${rocket.name} launch vehicle. ${desc}`,
+    alternates: { canonical: `https://orbica.space/rockets/${rocket.slug || params.id}` },
   };
 }
 
-// Visual (real photo + interactive 3D) is client-only — never SSR it.
-const RocketVisual = dynamic(() => import("@/components/rockets/RocketVisual"), {
-  ssr: false,
-  loading: () => (
-    <div className="w-full aspect-square border border-white/10 bg-white/[0.015] grid place-items-center text-white/45 text-sm">
-      Loading…
-    </div>
-  ),
-});
+const num = (v: unknown) => Number(v).toLocaleString("en-US");
 
-type Rocket = Record<string, any>;
+// Group engines by stage for the propulsion breakdown.
+const STAGE_LABEL: Record<number, string> = {
+  0: "Boosters",
+  1: "First stage",
+  2: "Second stage",
+  3: "Third stage",
+};
 
 export default async function RocketDetailPage({ params }: { params: { id: string } }) {
   const [rocket, articles, payloads] = await Promise.all([
-    safe<Rocket | null>(api.rocket(params.id), null),
+    api.rocket(params.id) as Promise<Rocket | null>,
     safe(api.rocketArticles(params.id), []),
-    safe(api.rocketPayloads(params.id), []), // now fetches up to 60 by default
+    safe(api.rocketPayloads(params.id), []),
   ]);
+  if (!rocket) notFound();
 
-  if (!rocket) {
-    return <PageHeader title="Not found" back={{ href: "/rockets", label: "Rockets" }} />;
-  }
+  const total = Number(rocket.total_launches ?? 0);
+  const successes = Number(rocket.successful_launches ?? 0);
+  const failures = Number(rocket.failed_launches ?? 0);
+  const rate = total > 0 ? `${((successes / total) * 100).toFixed(1)}%` : null;
 
-  const specs: [string, unknown][] = [
+  const specs: [string, React.ReactNode][] = [
     ["Status", rocket.status],
     ["Height", rocket.height_m && `${rocket.height_m} m`],
     ["Diameter", rocket.diameter_m && `${rocket.diameter_m} m`],
-    ["Mass", rocket.mass_kg && `${Number(rocket.mass_kg).toLocaleString()} kg`],
+    ["Mass", rocket.mass_kg && `${num(rocket.mass_kg)} kg`],
     ["Stages", rocket.stages],
-    ["Thrust", rocket.thrust_kn && `${Number(rocket.thrust_kn).toLocaleString()} kN`],
-    ["Payload to LEO", rocket.payload_leo_kg && `${Number(rocket.payload_leo_kg).toLocaleString()} kg`],
-    ["Payload to GTO", rocket.payload_gto_kg && `${Number(rocket.payload_gto_kg).toLocaleString()} kg`],
+    ["Thrust", rocket.thrust_kn && `${num(rocket.thrust_kn)} kN`],
+    ["Payload to LEO", rocket.payload_leo_kg && `${num(rocket.payload_leo_kg)} kg`],
+    ["Payload to GTO", rocket.payload_gto_kg && `${num(rocket.payload_gto_kg)} kg`],
     ["First flight", rocket.first_flight],
-    ["Total launches", rocket.total_launches],
-    ["Success / Fail", `${rocket.successful_launches ?? 0} / ${rocket.failed_launches ?? 0}`],
+    ["Last flight", rocket.last_flight],
+    ["Launches", total ? `${num(total)} (${successes} ✓ · ${failures} ✕)` : null],
+    ["Success rate", rate],
   ];
 
   const family = rocket.family?.name as string | undefined;
@@ -67,12 +71,12 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
   const manufacturerSlug = rocket.manufacturer?.slug as string | undefined;
 
   const eyebrowContent = (
-    <span className="flex items-center gap-1.5 uppercase">
+    <span className="flex items-center gap-1.5">
       {family ? <span>{family}</span> : null}
-      {family && manufacturer ? <span className="text-white/20">·</span> : null}
+      {family && manufacturer ? <span className="text-ink-4">·</span> : null}
       {manufacturer ? (
         manufacturerSlug ? (
-          <Link href={`/agencies/${manufacturerSlug}`} className="hover:text-white transition-colors">
+          <Link href={`/agencies/${manufacturerSlug}`} className="transition-colors hover:text-ink">
             {manufacturer}
           </Link>
         ) : (
@@ -83,16 +87,10 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
     </span>
   );
 
-  // Group engines by stage for the propulsion breakdown.
-  const STAGE_LABEL: Record<number, string> = {
-    0: "Boosters",
-    1: "First stage",
-    2: "Second stage",
-    3: "Third stage",
-  };
   const engines = (rocket.engines ?? []) as Record<string, any>[];
   const stages = [...new Set(engines.map((e) => e.stage as number))].sort((a, b) => a - b);
   const thrustOf = (e: Record<string, any>) => e.thrust_sl_kn ?? e.thrust_vac_kn;
+  const credit = [rocket.image_credit, rocket.image_license_name].filter(Boolean).join(" · ") || null;
 
   return (
     <div>
@@ -108,16 +106,22 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
         title={String(rocket.name)}
         back={{ href: "/rockets", label: "Rockets" }}
         meta={
-          <span className="flex items-center gap-2">
-            <Chip>{rocket.status ?? "unknown"}</Chip>
+          <span className="flex flex-wrap items-center gap-2">
+            <Chip tone={rocket.status === "active" ? "success" : "muted"}>{rocket.status ?? "unknown"}</Chip>
             {rocket.reusable && <Chip tone="accent">Reusable</Chip>}
           </span>
         }
+        actions={
+          <Link href={`/compare?r=${encodeURIComponent(rocket.slug || params.id)}`} className="btn btn-secondary">
+            Compare
+          </Link>
+        }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
         <RocketVisual
           imageUrl={rocket.image_url}
+          credit={credit}
           spec={{
             name: String(rocket.name),
             family: family,
@@ -131,67 +135,42 @@ export default async function RocketDetailPage({ params }: { params: { id: strin
               .reduce((n, e) => n + (Number(e.engine_count) || 0), 0),
           }}
         />
-
-        <div>
-          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5">Specifications</h2>
-          <dl className="divide-y divide-white/10 border-y border-white/10">
-            {specs
-              .filter(([, v]) => v !== null && v !== undefined && v !== "")
-              .map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between py-3">
-                  <dt className="text-[13px] tracking-wide text-white/45">{k}</dt>
-                  <dd className="font-mono text-sm">{String(v)}</dd>
-                </div>
-              ))}
-          </dl>
-        </div>
+        <SpecList title="Specifications" rows={specs} />
       </div>
 
       {rocket.description && (
-        <p className="mt-10 max-w-3xl text-white/55 leading-relaxed font-light">
-          {String(rocket.description)}
-        </p>
+        <p className="mt-10 max-w-3xl font-light leading-relaxed text-ink-2">{String(rocket.description)}</p>
       )}
 
       {engines.length > 0 && (
         <section className="mt-16">
-          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5 border-b border-white/10 pb-3">
-            Propulsion
-          </h2>
+          <SectionHeader title="Propulsion" />
           <div className="space-y-8">
             {stages.map((st) => (
               <div key={st}>
-                <h3 className="text-[10px] tracking-[0.25em] uppercase text-[var(--color-space-accent-2)]/80 mb-3">
+                <h3 className="mb-3 font-mono text-[10px] uppercase tracking-[0.25em] text-accent/80">
                   {STAGE_LABEL[st] ?? `Stage ${st}`}
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-white/5">
+                <div className="tile-grid md:grid-cols-2">
                   {engines
                     .filter((e) => e.stage === st)
                     .map((e, i) => (
-                      <div key={i} className="bg-[#06080f] p-4">
+                      <div key={i} className="tile p-4">
                         <div className="flex items-baseline justify-between gap-3">
                           <span className="font-light">
-                            {e.engine_count > 1 && (
-                              <span className="text-[var(--color-space-accent-2)] font-mono mr-1.5">
-                                {e.engine_count}×
-                              </span>
-                            )}
+                            {e.engine_count > 1 && <span className="mr-1.5 font-mono text-accent">{e.engine_count}×</span>}
                             {e.name}
                           </span>
-                          {thrustOf(e) && (
-                            <span className="font-mono text-xs text-white/50 shrink-0">
-                              {Number(thrustOf(e)).toLocaleString()} kN
-                            </span>
-                          )}
+                          {thrustOf(e) && <span className="shrink-0 font-mono text-xs text-ink-3">{num(thrustOf(e))} kN</span>}
                         </div>
-                        <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-1.5">
+                        <div className="mt-1.5 font-mono text-[11px] uppercase tracking-wide text-ink-4">
                           {[e.propellant, e.cycle].filter(Boolean).join(" · ")}
                         </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/35 mt-2">
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink-4">
                           {e.manufacturer && <span>{e.manufacturer}</span>}
                           {e.isp_vac_s && <span>Isp {e.isp_vac_s}s (vac)</span>}
                           {e.first_flight && <span>since {e.first_flight}</span>}
-                          {e.note && <span className="text-white/30 italic">{e.note}</span>}
+                          {e.note && <span className="italic text-ink-4">{e.note}</span>}
                         </div>
                       </div>
                     ))}

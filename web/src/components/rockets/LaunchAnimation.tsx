@@ -331,7 +331,7 @@ export default function LaunchAnimation({ spec }: { spec: RocketSpec }) {
   };
 
   return (
-    <div ref={ref} className="relative w-full aspect-[4/3] overflow-hidden border border-white/10 bg-[#05070f]">
+    <div ref={ref} className="relative w-full aspect-[4/3] overflow-hidden border border-line bg-[#05070f]">
       {armed ? (
         <Canvas camera={{ position: [8, 3, 16], fov: 45 }} dpr={[1, 2]} frameloop={inView ? "always" : "never"}>
           <Suspense fallback={<Html center>Loading…</Html>}>
@@ -339,7 +339,7 @@ export default function LaunchAnimation({ spec }: { spec: RocketSpec }) {
           </Suspense>
         </Canvas>
       ) : (
-        <div className="absolute inset-0 grid place-items-center text-white/30 text-xs tracking-[0.2em] uppercase">
+        <div className="absolute inset-0 grid place-items-center text-ink-4 text-xs tracking-[0.2em] uppercase">
           Launch sequence
         </div>
       )}
@@ -347,16 +347,16 @@ export default function LaunchAnimation({ spec }: { spec: RocketSpec }) {
       {/* telemetry */}
       {/* sits below the mode tabs, which occupy the top-left corner */}
       <div className="absolute top-14 left-3 font-mono text-[11px] leading-relaxed pointer-events-none">
-        <div className="text-[var(--color-space-accent-2)] text-sm">{formatT(t)}</div>
-        <div className="text-white/70 tabular-nums">ALT {alt < 10 ? alt.toFixed(1) : alt.toFixed(0)} km</div>
-        <div className="text-white/70 tabular-nums">VEL {vel.toFixed(2)} km/s</div>
+        <div className="text-accent text-sm">{formatT(t)}</div>
+        <div className="text-ink-2 tabular-nums">ALT {alt < 10 ? alt.toFixed(1) : alt.toFixed(0)} km</div>
+        <div className="text-ink-2 tabular-nums">VEL {vel.toFixed(2)} km/s</div>
       </div>
 
       {/* current milestone */}
       {ev && (
         <div className="absolute top-14 right-3 max-w-[46%] text-right pointer-events-none">
-          <div className="text-[11px] tracking-[0.2em] uppercase text-[var(--color-space-accent-2)]">{ev.label}</div>
-          <div className="text-[11px] text-white/55 mt-1 leading-snug">{ev.detail}</div>
+          <div className="text-[11px] tracking-[0.2em] uppercase text-accent">{ev.label}</div>
+          <div className="text-[11px] text-ink-2 mt-1 leading-snug">{ev.detail}</div>
         </div>
       )}
 
@@ -380,7 +380,7 @@ export default function LaunchAnimation({ spec }: { spec: RocketSpec }) {
               setT(parseFloat(e.target.value));
             }}
             aria-label="Scrub the launch timeline"
-            className="w-full accent-[var(--color-space-accent-2)]"
+            className="w-full accent-accent"
           />
         </div>
         {/* milestone ticks */}
@@ -393,7 +393,7 @@ export default function LaunchAnimation({ spec }: { spec: RocketSpec }) {
                 setT(e.t);
               }}
               className={`text-[9px] tracking-[0.14em] uppercase transition-colors ${
-                ev?.kind === e.kind ? "text-[var(--color-space-accent-2)]" : "text-white/35 hover:text-white/70"
+                ev?.kind === e.kind ? "text-accent" : "text-ink-4 hover:text-ink-2"
               }`}
             >
               {formatT(e.t)} {e.label}

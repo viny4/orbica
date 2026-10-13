@@ -1,262 +1,92 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import Link from "next/link";
 
-interface CrewMember {
-  name: string;
-  craft: string;
-}
+const EARTH_RADIUS_KM = 6371;
 
-interface TelemetryStats {
-  pressure: number;
-  o2: number;
-  co2: number;
-  temp: number;
-  power: number;
-}
+// ISS panel for the live tracker. Every number here is derived from the
+// station's real orbit (SGP4 from the newest TLE). It used to show randomised
+// "cabin telemetry" and a hard-coded 2022 crew list as if they were live; both
+// were invented, so they're gone. The NASA stream is real and loads on demand.
+export default function ISSHub({ velocity, altitude, onClose }: { velocity: number; altitude: number; onClose: () => void }) {
+  const [tab, setTab] = useState<"orbit" | "feed">("orbit");
 
-export default function ISSHub({
-  velocity,
-  altitude,
-  onClose,
-}: {
-  velocity: number;
-  altitude: number;
-  onClose: () => void;
-}) {
-  const [activeTab, setActiveTab] = useState<"status" | "crew" | "feed">("status");
-  const [crew, setCrew] = useState<string[]>([]);
-  const [loadingCrew, setLoadingCrew] = useState(true);
-
-  // Simulated telemetry metrics that fluctuate slightly
-  const [telemetry, setTelemetry] = useState<TelemetryStats>({
-    pressure: 101.32,
-    o2: 20.9,
-    co2: 0.31,
-    temp: 22.4,
-    power: 118.6,
-  });
-
-  // Telemetry fluctuation effect
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setTelemetry((prev) => ({
-        pressure: Number((101.3 + (Math.random() - 0.5) * 0.15).toFixed(2)),
-        o2: Number((20.9 + (Math.random() - 0.5) * 0.05).toFixed(2)),
-        co2: Number((0.31 + (Math.random() - 0.5) * 0.02).toFixed(3)),
-        temp: Number((22.4 + (Math.random() - 0.5) * 0.3).toFixed(1)),
-        power: Number((118.5 + (Math.random() - 0.5) * 2.5).toFixed(1)),
-      }));
-    }, 2500);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Fetch ISS Crew members
-  useEffect(() => {
-    if (activeTab !== "crew") return;
-    setLoadingCrew(true);
-
-    fetch("https://api.open-notify.org/astros.json")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data && Array.isArray(data.people)) {
-          const issPeople = data.people
-            .filter((p: CrewMember) => p.craft === "ISS" || p.craft === "ISS-ZARYA")
-            .map((p: CrewMember) => p.name);
-          setCrew(issPeople.length > 0 ? issPeople : FALLBACK_CREW);
-        } else {
-          setCrew(FALLBACK_CREW);
-        }
-        setLoadingCrew(false);
-      })
-      .catch(() => {
-        setCrew(FALLBACK_CREW);
-        setLoadingCrew(false);
-      });
-  }, [activeTab]);
-
-  const FALLBACK_CREW = [
-    "Kjell Lindgren (Commander)",
-    "Robert Hines (Flight Engineer)",
-    "Jessica Watkins (Flight Engineer)",
-    "Samantha Cristoforetti (Flight Engineer)",
-    "Oleg Artemyev (Flight Engineer)",
-    "Denis Matveev (Flight Engineer)",
-    "Sergey Korsakov (Flight Engineer)",
-  ];
+  const hasFix = velocity > 0 && altitude > 0;
+  const periodMin = hasFix ? (2 * Math.PI * (EARTH_RADIUS_KM + altitude)) / velocity / 60 : null;
+  const rows: [string, string][] = hasFix
+    ? [
+        ["Velocity", `${Math.round(velocity * 3600).toLocaleString("en-US")} km/h`],
+        ["Altitude", `${altitude.toFixed(1)} km`],
+        ["Orbital period", `${periodMin!.toFixed(1)} min`],
+        ["Orbits per day", (1440 / periodMin!).toFixed(2)],
+        ["Sunrises per day", String(Math.round(1440 / periodMin!))],
+      ]
+    : [["Status", "Propagating…"]];
 
   return (
-    <div className="absolute bottom-16 right-4 lg:bottom-4 lg:right-4 bg-black/80 backdrop-blur-md border border-[var(--color-space-accent-2)]/30 w-[350px] shadow-2xl z-20 flex flex-col transition-all duration-300">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/[0.02]">
+    <div className="absolute bottom-16 right-4 z-20 flex w-[min(340px,calc(100%-2rem))] flex-col border border-accent/30 bg-black/80 shadow-2xl backdrop-blur-md lg:bottom-4">
+      <div className="flex items-center justify-between border-b border-line bg-white/[0.02] px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-space-accent-2)] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-space-accent-2)]"></span>
+            <span className="absolute inline-flex h-full w-full rounded-full bg-accent opacity-75 motion-safe:animate-ping" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-accent" />
           </span>
-          <span className="text-[11px] tracking-[0.25em] uppercase text-white/50 font-mono">
-            ISS Command Center
-          </span>
+          <span className="font-mono text-[11px] uppercase tracking-[0.25em] text-ink-3">International Space Station</span>
         </div>
-        <button
-          onClick={onClose}
-          className="text-white/40 hover:text-white transition-colors p-1"
-          aria-label="Close Command Center"
-        >
+        <button onClick={onClose} className="p-1 text-ink-3 transition-colors hover:text-ink" aria-label="Close ISS panel">
           ✕
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex border-b border-white/15 bg-black/45">
-        {(["status", "crew", "feed"] as const).map((tab) => (
+      <div className="flex border-b border-line" role="tablist" aria-label="ISS panel">
+        {(["orbit", "feed"] as const).map((t) => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 text-[10px] tracking-[0.1em] uppercase py-2.5 transition-all font-mono border-r border-white/10 last:border-r-0 ${
-              activeTab === tab
-                ? "bg-white/[0.04] text-[var(--color-space-accent-2)] font-semibold shadow-inner"
-                : "text-white/40 hover:text-white/70 hover:bg-white/[0.01]"
+            key={t}
+            role="tab"
+            aria-selected={tab === t}
+            onClick={() => setTab(t)}
+            className={`flex-1 border-r border-line py-2.5 font-mono text-[10px] uppercase tracking-[0.1em] transition-colors last:border-r-0 ${
+              tab === t ? "bg-white/[0.04] text-accent" : "text-ink-3 hover:text-ink-2"
             }`}
           >
-            {tab}
+            {t === "orbit" ? "Orbit" : "Live video"}
           </button>
         ))}
       </div>
 
-      {/* Content */}
-      <div className="p-4 flex-1 min-h-[220px] max-h-[350px] overflow-y-auto">
-        {activeTab === "status" && (
-          <div className="space-y-3.5">
-            {/* Speed & Altitude */}
-            <div className="grid grid-cols-2 gap-3 pb-3 border-b border-white/5 font-mono">
-              <div>
-                <div className="text-[9px] text-white/30 uppercase tracking-wider">Velocity</div>
-                <div className="text-sm font-semibold text-white/85">
-                  {velocity > 0 ? `${(velocity * 3600).toFixed(0)} km/h` : "27,560 km/h"}
-                </div>
+      <div className="min-h-[200px] p-4">
+        {tab === "orbit" ? (
+          <dl className="spec-list">
+            {rows.map(([k, v]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
               </div>
-              <div>
-                <div className="text-[9px] text-white/30 uppercase tracking-wider">Altitude</div>
-                <div className="text-sm font-semibold text-white/85">
-                  {altitude > 0 ? `${altitude.toFixed(1)} km` : "418.5 km"}
-                </div>
-              </div>
-            </div>
-
-            {/* Environmental Gauges */}
-            <div className="space-y-2.5 font-mono text-xs">
-              {/* Cabin Pressure */}
-              <div>
-                <div className="flex justify-between text-white/50 text-[10px] mb-1">
-                  <span>Cabin Pressure</span>
-                  <span className="text-white/85">{telemetry.pressure} kPa</span>
-                </div>
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-400/80 transition-all duration-1000"
-                    style={{ width: `${(telemetry.pressure / 110) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Cabin Temperature */}
-              <div>
-                <div className="flex justify-between text-white/50 text-[10px] mb-1">
-                  <span>Cabin Temperature</span>
-                  <span className="text-white/85">{telemetry.temp} °C</span>
-                </div>
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-sky-400/80 transition-all duration-1000"
-                    style={{ width: `${(telemetry.temp / 35) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Oxygen Concentration */}
-              <div>
-                <div className="flex justify-between text-white/50 text-[10px] mb-1">
-                  <span>Oxygen (O₂) Level</span>
-                  <span className="text-white/85">{telemetry.o2} %</span>
-                </div>
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-emerald-400/80 transition-all duration-1000"
-                    style={{ width: `${(telemetry.o2 / 25) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              {/* Solar Array Power Generation */}
-              <div>
-                <div className="flex justify-between text-white/50 text-[10px] mb-1">
-                  <span>Solar Array Power</span>
-                  <span className="text-white/85">{telemetry.power} kW</span>
-                </div>
-                <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-amber-400/80 transition-all duration-1000"
-                    style={{ width: `${(telemetry.power / 130) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "crew" && (
-          <div className="space-y-2 select-none">
-            {loadingCrew ? (
-              <div className="text-center py-8 text-xs text-white/40 font-mono flex flex-col items-center gap-2">
-                <span className="animate-spin rounded-full h-4 w-4 border-b border-t border-[var(--color-space-accent-2)]"></span>
-                Querying Astros Registry…
-              </div>
-            ) : (
-              <ul className="space-y-1.5 font-mono text-xs max-h-[220px] overflow-y-auto pr-1">
-                {crew.map((member, i) => (
-                  <li
-                    key={i}
-                    className="flex items-center justify-between px-3 py-2 border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors"
-                  >
-                    <span className="text-white/80 font-medium truncate">{member}</span>
-                    <span className="text-[9px] text-[var(--color-space-accent-2)]/75 border border-[var(--color-space-accent-2)]/25 px-1.5 py-0.5 rounded-sm uppercase tracking-wider">
-                      Astronaut
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {activeTab === "feed" && (
-          <div className="space-y-2 select-none">
-            <div className="relative aspect-video w-full border border-white/10 rounded-sm overflow-hidden bg-black">
+            ))}
+          </dl>
+        ) : (
+          <div className="space-y-2">
+            <div className="relative aspect-video w-full overflow-hidden border border-line bg-black">
               <iframe
-                src="https://www.youtube.com/embed/live_stream?channel=UCLA_RMccEDojqM3HHiF454g"
-                title="NASA Live ISS Stream"
-                className="absolute inset-0 w-full h-full border-0"
+                src="https://www.youtube-nocookie.com/embed/live_stream?channel=UCLA_RMccEDojqM3HHiF454g"
+                title="NASA live stream"
+                className="absolute inset-0 h-full w-full border-0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
-              ></iframe>
+              />
             </div>
-            <div className="text-[9px] font-mono text-white/40 text-center leading-relaxed">
-              NASA Live Earth-View Stream. Video is subject to momentary signal loss when passing through ground-station shadows.
-            </div>
+            <p className="text-center font-mono text-[9px] leading-relaxed text-ink-4">
+              NASA&apos;s live stream. Video drops out when the station is between ground stations.
+            </p>
           </div>
         )}
       </div>
 
-      {/* Footer Details Link */}
-      <div className="px-4 py-2.5 border-t border-white/10 bg-white/[0.01] text-center">
-        <a
-          href="/satellites/iss-zarya"
-          className="inline-block text-[10px] font-semibold tracking-[0.2em] uppercase text-[var(--color-space-accent-2)] hover:text-white transition-colors"
-        >
-          Detailed Orbit Profile →
-        </a>
+      <div className="border-t border-line px-4 py-2.5 text-center">
+        <Link href="/iss" className="font-mono text-[10px] font-semibold uppercase tracking-[0.2em] text-accent transition-colors hover:text-ink">
+          ISS live page & pass predictions →
+        </Link>
       </div>
     </div>
   );

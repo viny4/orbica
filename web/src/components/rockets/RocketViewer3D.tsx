@@ -189,7 +189,7 @@ export default function RocketViewer3D({ spec }: { spec: RocketSpec }) {
   return (
     <div
       ref={ref}
-      className="relative w-full aspect-square overflow-hidden border border-white/10 bg-gradient-to-b from-[#0a1020] to-[#04060d]"
+      className="relative w-full aspect-square overflow-hidden border border-line bg-gradient-to-b from-[#0a1020] to-[#04060d]"
     >
       {/* WebGL only initialises once scrolled into view, and the render loop
           stops whenever the viewer is off-screen — no GPU work in the background. */}
@@ -197,7 +197,11 @@ export default function RocketViewer3D({ spec }: { spec: RocketSpec }) {
         <Canvas
           shadows
           camera={{ position: [9, 4, 13], fov: 42 }}
-          dpr={[1, 2]}
+          dpr={[1, 1.5]}
+          // Render only while on screen ("never" off-screen). Not frameloop="demand":
+          // drei's OrbitControls emits a change event on every auto-rotate step,
+          // which re-invalidates each frame — on demand it never stops, even
+          // off-screen.
           frameloop={inView ? "always" : "never"}
         >
           <color attach="background" args={["#05070f"]} />
@@ -211,7 +215,7 @@ export default function RocketViewer3D({ spec }: { spec: RocketSpec }) {
           <gridHelper args={[50, 50, "#16203a", "#0b1020"]} position={[0, -5.5, 0]} />
         </Canvas>
       ) : (
-        <div className="absolute inset-0 grid place-items-center text-white/30 text-xs tracking-[0.2em] uppercase">
+        <div className="absolute inset-0 grid place-items-center text-ink-4 text-xs tracking-[0.2em] uppercase">
           3D model
         </div>
       )}
@@ -224,15 +228,15 @@ export default function RocketViewer3D({ spec }: { spec: RocketSpec }) {
             onMouseLeave={() => setHighlightStage(null)}
             className={`text-[10px] tracking-[0.15em] uppercase px-2.5 py-1 border transition-colors ${
               highlightStage === i
-                ? "border-[var(--color-space-accent-2)] text-[var(--color-space-accent-2)]"
-                : "border-white/15 text-white/50 hover:text-white"
+                ? "border-accent text-accent"
+                : "border-line-strong text-ink-3 hover:text-white"
             }`}
           >
             Stage {i + 1}
           </button>
         ))}
       </div>
-      <div className="absolute top-3 right-3 text-[10px] text-white/35 font-mono">
+      <div className="absolute top-3 right-3 text-[10px] text-ink-4 font-mono">
         {cfg.boosters > 0 ? `${cfg.boosters} boosters · ` : ""}
         {cfg.engines} engine{cfg.engines > 1 ? "s" : ""} · drag to rotate
       </div>

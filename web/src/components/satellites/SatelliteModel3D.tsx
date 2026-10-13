@@ -931,7 +931,7 @@ export default function SatelliteModel3D({ spec }: { spec: SatModelSpec }) {
   return (
     <div
       ref={ref}
-      className="relative w-full aspect-square overflow-hidden border border-white/10 bg-gradient-to-b from-[#0a1020] to-[#04060d]"
+      className="relative w-full aspect-square overflow-hidden border border-line bg-gradient-to-b from-[#0a1020] to-[#04060d]"
     >
       {armed ? (
         <Canvas
@@ -945,11 +945,11 @@ export default function SatelliteModel3D({ spec }: { spec: SatModelSpec }) {
           <Suspense fallback={<Html center>Loading…</Html>}>{isISS ? <IssScene /> : <SatelliteScene spec={spec} />}</Suspense>
         </Canvas>
       ) : (
-        <div className="absolute inset-0 grid place-items-center text-white/30 text-xs tracking-[0.2em] uppercase">
+        <div className="absolute inset-0 grid place-items-center text-ink-4 text-xs tracking-[0.2em] uppercase">
           3D model
         </div>
       )}
-      <div className="absolute top-3 right-3 text-[10px] text-white/35 font-mono">
+      <div className="absolute top-3 right-3 text-[10px] text-ink-4 font-mono">
         model · drag to rotate
       </div>
     </div>

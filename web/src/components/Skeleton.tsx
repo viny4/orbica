@@ -18,7 +18,7 @@ export function GridSkel({ count = 9, image = false }: { count?: number; image?:
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="bg-[#06080f]">
+        <div key={i} className="bg-surface">
           {image && <Skel className="aspect-[4/3] w-full" />}
           <div className="p-5 space-y-3">
             <Skel className="h-5 w-2/3 rounded" />
@@ -38,7 +38,7 @@ export function DetailSkel() {
         <Skel className="aspect-square w-full" />
         <div className="space-y-4">
           {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="flex items-center justify-between border-b border-white/10 pb-3">
+            <div key={i} className="flex items-center justify-between border-b border-line pb-3">
               <Skel className="h-3 w-24 rounded" />
               <Skel className="h-3 w-32 rounded" />
             </div>
@@ -51,9 +51,9 @@ export function DetailSkel() {
 
 export function ListSkel({ rows = 8 }: { rows?: number }) {
   return (
-    <div className="border-t border-white/10">
+    <div className="border-t border-line">
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-center justify-between gap-4 py-4 border-b border-white/10">
+        <div key={i} className="flex items-center justify-between gap-4 py-4 border-b border-line">
           <div className="flex-1 space-y-2.5">
             <Skel className="h-4 w-2/3 rounded" />
             <Skel className="h-3 w-1/3 rounded" />

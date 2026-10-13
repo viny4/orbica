@@ -1,83 +1,80 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { Metadata } from "next";
+import { SESSION_COOKIE, SESSION_TTL_MS, createSession, credentialsMatch, safeCallback } from "@/lib/adminSession";
 
 export const runtime = "edge";
 
-export default function LoginPage({
-  searchParams,
-}: {
-  searchParams: { callbackUrl?: string; error?: string };
-}) {
-  const callbackUrl = searchParams.callbackUrl || "/sync-logs";
+export const metadata: Metadata = {
+  title: "Operator sign-in — Orbica",
+  robots: { index: false, follow: false },
+};
+
+const ERRORS: Record<string, string> = {
+  invalid: "Invalid credentials.",
+  config: "Sign-in isn't configured on this deployment.",
+};
+
+export default function LoginPage({ searchParams }: { searchParams: { callbackUrl?: string; error?: string } }) {
+  const callbackUrl = safeCallback(searchParams.callbackUrl);
 
   async function login(formData: FormData) {
     "use server";
-    
-    const username = formData.get("username") as string;
-    const password = formData.get("password") as string;
-    
-    const validUsername = process.env.ADMIN_USERNAME;
-    const validPassword = process.env.ADMIN_PASSWORD;
 
-    if (username === validUsername && password === validPassword) {
-      const cookieStore = await cookies();
-      cookieStore.set("admin_token", "authenticated", {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24, // 1 day
-      });
-      redirect(searchParams.callbackUrl || "/sync-logs");
-    } else {
-      redirect("/login?error=Invalid credentials");
+    const username = String(formData.get("username") ?? "");
+    const password = String(formData.get("password") ?? "");
+    // Validate again on the server: the hidden field is user-controlled.
+    const next = safeCallback(String(formData.get("callbackUrl") ?? ""));
+
+    if (!(await credentialsMatch(username, password))) {
+      // Small fixed delay blunts online guessing without a datastore.
+      await new Promise((r) => setTimeout(r, 750));
+      redirect(`/login?error=invalid&callbackUrl=${encodeURIComponent(next)}`);
     }
+    const token = await createSession();
+    if (!token) redirect("/login?error=config");
+
+    cookies().set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: Math.floor(SESSION_TTL_MS / 1000),
+    });
+    // Drop the legacy, forgeable cookie if a browser still has it.
+    cookies().delete("admin_token");
+    redirect(next);
   }
 
+  // Only known error codes are displayed — never reflect arbitrary query text.
+  const error = searchParams.error ? ERRORS[searchParams.error] ?? ERRORS.invalid : null;
+
   return (
-    <div className="min-h-screen bg-[#03050a] flex items-center justify-center p-6 text-white font-mono">
-      <div className="w-full max-w-sm p-8 border border-white/10 bg-black/40 backdrop-blur">
-        <h1 className="text-xl font-light tracking-widest uppercase mb-8 text-center text-[var(--color-space-accent-2)]">
-          System Access
-        </h1>
-        
-        {searchParams.error && (
-          <div className="mb-6 p-3 bg-red-500/10 border border-red-500/30 text-red-400 text-xs text-center">
-            {searchParams.error}
+    <div className="flex min-h-screen items-center justify-center bg-void p-6 font-mono text-ink">
+      <div className="w-full max-w-sm border border-line bg-black/40 p-8 backdrop-blur">
+        <h1 className="mb-8 text-center text-xl font-light uppercase tracking-widest text-accent">System access</h1>
+
+        {error && (
+          <div role="alert" className="mb-6 border border-danger/30 bg-danger/10 p-3 text-center text-xs text-danger">
+            {error}
           </div>
         )}
 
         <form action={login} className="space-y-6">
           <input type="hidden" name="callbackUrl" value={callbackUrl} />
-          
           <div className="space-y-2">
-            <label className="text-[10px] tracking-widest uppercase text-white/50 block">
+            <label htmlFor="username" className="block text-[10px] uppercase tracking-widest text-ink-3">
               Operator ID
             </label>
-            <input 
-              name="username" 
-              type="text" 
-              required
-              className="w-full bg-black/60 border border-white/10 p-3 text-sm focus:outline-none focus:border-[var(--color-space-accent-2)] transition-colors text-white"
-            />
+            <input id="username" name="username" type="text" autoComplete="username" required className="field w-full p-3" />
           </div>
-          
           <div className="space-y-2">
-            <label className="text-[10px] tracking-widest uppercase text-white/50 block">
+            <label htmlFor="password" className="block text-[10px] uppercase tracking-widest text-ink-3">
               Passcode
             </label>
-            <input 
-              name="password" 
-              type="password" 
-              required
-              className="w-full bg-black/60 border border-white/10 p-3 text-sm focus:outline-none focus:border-[var(--color-space-accent-2)] transition-colors text-white"
-            />
+            <input id="password" name="password" type="password" autoComplete="current-password" required className="field w-full p-3" />
           </div>
-          
-          <button 
-            type="submit"
-            className="w-full py-4 bg-white text-black text-xs font-bold tracking-widest uppercase hover:bg-white/90 transition-colors mt-8"
-          >
+          <button type="submit" className="btn btn-primary mt-8 w-full">
             Authenticate
           </button>
         </form>

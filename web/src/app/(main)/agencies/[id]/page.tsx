@@ -1,43 +1,35 @@
 import Link from "next/link";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
 import { api, getLaunchTitle } from "@/lib/api";
 import { JsonLd, breadcrumbSchema } from "@/components/JsonLd";
-import { safe } from "@/components/EmptyState";
 import { Flag } from "@/components/Flag";
 import { AgencyLogo } from "@/components/AgencyLogo";
-import { Outcome } from "@/components/ui";
+import { Outcome, SectionHeader } from "@/components/ui";
 import { country } from "@/lib/flags";
 
 export const runtime = "edge";
 
-import type { Metadata } from "next";
+type Agency = Record<string, any>;
 
 export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const a = await safe<Agency | null>(api.agency(params.id), null);
-  if (!a) return { title: "Not found — Orbica" };
-  
+  const a = await api.agency(params.id).catch(() => undefined);
+  if (a === null) notFound();
+  if (!a) return { title: "Agency — Orbica" };
   return {
     title: `${a.name} — Orbica`,
     description: `${a.name} is a ${a.agency_type?.toLowerCase() ?? "space agency"} based in ${country(a.country_code)?.name ?? "Unknown"}. View their launch history and vehicles on Orbica.`,
+    alternates: { canonical: `https://orbica.space/agencies/${a.slug || params.id}` },
   };
 }
 
-type Agency = Record<string, any>;
-
 const fmtDate = (s?: string) =>
-  s ? new Date(s).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }) : "TBD";
+  s ? new Date(s).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" }) : "TBD";
 
 export default async function AgencyDetailPage({ params }: { params: { id: string } }) {
-  const a = (await safe<Agency | null>(api.agency(params.id), null)) as Agency | null;
-  if (!a) {
-    return (
-      <div>
-        <Link href="/agencies" className="text-[11px] tracking-[0.25em] uppercase text-white/45 hover:text-white">
-          ← Agencies
-        </Link>
-        <h1 className="mt-6 text-5xl font-light uppercase tracking-tight">Not found</h1>
-      </div>
-    );
-  }
+  const a = (await api.agency(params.id)) as Agency | null;
+  if (!a) notFound();
+
   const rockets: any[] = Array.isArray(a.rockets) ? a.rockets : [];
   const flown: any[] = Array.isArray(a.flown) ? a.flown : [];
   const launches: any[] = Array.isArray(a.launches) ? a.launches : [];
@@ -55,44 +47,43 @@ export default async function AgencyDetailPage({ params }: { params: { id: strin
       <header className="mb-12">
         <Link
           href="/agencies"
-          className="inline-block mb-6 text-[11px] tracking-[0.25em] uppercase text-white/45 hover:text-white transition-colors"
+          className="group mb-6 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.25em] text-ink-3 transition-colors hover:text-ink"
         >
-          ← Agencies
+          <span aria-hidden className="transition-transform duration-200 group-hover:-translate-x-0.5">←</span>
+          Agencies
         </Link>
-        <div className="flex items-start gap-6">
-          <AgencyLogo src={a.logo_url} name={String(a.name)} className="w-24 h-24" />
-          <div>
-            <p className="flex items-center gap-2 text-[11px] tracking-[0.35em] uppercase text-[var(--color-space-accent-2)]/75">
-              <Flag code={a.country_code} className="w-5 h-3.5 rounded-[2px]" />
+        <div className="flex items-start gap-5 sm:gap-7">
+          <AgencyLogo src={a.logo_url} name={String(a.name)} className="h-16 w-16 sm:h-24 sm:w-24" />
+          <div className="min-w-0">
+            <p className="eyebrow flex items-center gap-2">
+              <Flag code={a.country_code} className="h-3.5 w-5 rounded-[2px]" />
               {nation?.name ?? "International"} · {a.agency_type ?? "Agency"}
             </p>
-            <h1 className="mt-3 font-light uppercase leading-[0.95] tracking-tight text-5xl sm:text-6xl lg:text-7xl">
-              {a.name}
-            </h1>
-            <div className="mt-5 text-sm text-white/50 font-mono tabular-nums">
-              {a.total_launches ?? 0} launches
-              {a.founding_year ? ` · est. ${a.founding_year}` : ""}
+            <h1 className="mt-3 text-title font-light uppercase tracking-tight text-balance break-words">{a.name}</h1>
+            <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 font-mono text-sm tabular-nums text-ink-3">
+              <span><span className="text-ink">{a.total_launches ?? 0}</span> launches</span>
+              {a.founding_year && <span>est. {a.founding_year}</span>}
+              {a.website && (
+                <a href={a.website} target="_blank" rel="noopener noreferrer" className="text-accent/80 hover:text-accent">
+                  Website ↗
+                </a>
+              )}
             </div>
           </div>
         </div>
       </header>
 
-      {a.description && (
-        <p className="max-w-3xl text-white/55 leading-relaxed font-light mb-14">{String(a.description)}</p>
-      )}
+      {a.description && <p className="mb-14 max-w-3xl font-light leading-relaxed text-ink-2">{String(a.description)}</p>}
 
       {/* Vehicles this agency BUILT (manufacturers) */}
       {rockets.length > 0 && (
         <section className="mb-14">
-          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5 border-b border-white/10 pb-3">
-            Vehicles built · {rockets.length}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5">
+          <SectionHeader title="Vehicles built" count={rockets.length} />
+          <div className="tile-grid sm:grid-cols-2 lg:grid-cols-3">
             {rockets.map((r) => (
-              <Link key={r.id} href={`/rockets/${r.slug}`}
-                className="group block bg-[#06080f] p-5 hover:bg-[#0c1322] transition-colors">
-                <div className="font-light group-hover:text-[var(--color-space-accent-2)] transition-colors">{r.name}</div>
-                <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-1">
+              <Link key={r.id} href={`/rockets/${r.slug}`} className="tile group p-5">
+                <div className="font-light transition-colors group-hover:text-accent">{r.name}</div>
+                <div className="mt-1 font-mono text-[11px] uppercase tracking-wide text-ink-4">
                   {r.status ?? "unknown"} · {r.total_launches ?? 0} launches
                 </div>
               </Link>
@@ -104,49 +95,39 @@ export default async function AgencyDetailPage({ params }: { params: { id: strin
       {/* Vehicles this agency has FLOWN (operators) */}
       {flown.length > 0 && (
         <section className="mb-14">
-          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5 border-b border-white/10 pb-3">
-            Vehicles flown · {flown.length}
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5">
+          <SectionHeader title="Vehicles flown" count={flown.length} />
+          <div className="tile-grid sm:grid-cols-2 lg:grid-cols-3">
             {flown.map((v) => (
-              <Link key={v.id} href={`/rockets/${v.slug}`}
-                className="group flex items-center justify-between gap-3 bg-[#06080f] p-5 hover:bg-[#0c1322] transition-colors">
-                <div>
-                  <div className="font-light group-hover:text-[var(--color-space-accent-2)] transition-colors">{v.name}</div>
-                  <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-1">{v.status ?? "unknown"}</div>
+              <Link key={v.id} href={`/rockets/${v.slug}`} className="tile group flex items-center justify-between gap-3 p-5">
+                <div className="min-w-0">
+                  <div className="truncate font-light transition-colors group-hover:text-accent">{v.name}</div>
+                  <div className="mt-1 font-mono text-[11px] uppercase tracking-wide text-ink-4">{v.status ?? "unknown"}</div>
                 </div>
-                <div className="font-mono text-sm text-white/55 shrink-0">{v.cnt}×</div>
+                <div className="shrink-0 font-mono text-sm text-ink-3">{v.cnt}×</div>
               </Link>
             ))}
           </div>
         </section>
       )}
 
-      {/* Full launch history */}
+      {/* Launch history (newest 200) */}
       {launches.length > 0 && (
         <section>
-          <h2 className="text-[11px] tracking-[0.3em] uppercase text-white/45 mb-5 border-b border-white/10 pb-3">
-            Launch history · {launches.length}
-          </h2>
-          <ul className="divide-y divide-white/10 border-y border-white/10">
+          <SectionHeader title="Launch history" count={launches.length} />
+          <ul className="divide-y divide-line border-y border-line">
             {launches.map((l) => (
               <li key={l.id}>
-                <Link href={`/launches/${l.id}`}
-                  className="group flex items-center justify-between gap-4 py-3.5 hover:bg-white/[0.02] transition-colors -mx-2 px-2">
+                <Link href={`/launches/${l.id}`} className="group -mx-2 flex items-center justify-between gap-4 px-2 py-3.5 transition-colors hover:bg-white/[0.02]">
                   <div className="min-w-0">
-                    <div className="font-light truncate group-hover:text-[var(--color-space-accent-2)] transition-colors">
+                    <div className="truncate font-light transition-colors group-hover:text-accent">
                       {getLaunchTitle(l.mission_name, l.name, l.rocket_name)}
                     </div>
-                    <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-0.5 truncate">
-                      {l.rocket_name ?? "—"}
-                    </div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] uppercase tracking-wide text-ink-4">{l.rocket_name ?? "—"}</div>
                   </div>
-                  <div className="flex items-center gap-4 shrink-0 text-right">
+                  <div className="flex shrink-0 items-center gap-4 text-right">
                     {l.outcome && <Outcome outcome={l.outcome} />}
-                    <span className="font-mono text-xs text-white/45 tabular-nums w-24 text-right hidden sm:inline">
-                      {fmtDate(l.launch_time)}
-                    </span>
-                    <span className="font-mono text-xs text-white/45 tabular-nums sm:hidden">{l.launch_year}</span>
+                    <span className="hidden w-24 text-right font-mono text-xs tabular-nums text-ink-3 sm:inline">{fmtDate(l.launch_time)}</span>
+                    <span className="font-mono text-xs tabular-nums text-ink-3 sm:hidden">{l.launch_year}</span>
                   </div>
                 </Link>
               </li>
@@ -156,7 +137,7 @@ export default async function AgencyDetailPage({ params }: { params: { id: strin
       )}
 
       {rockets.length === 0 && flown.length === 0 && launches.length === 0 && (
-        <p className="text-white/40 text-sm">No vehicles or launches linked yet.</p>
+        <p className="text-sm text-ink-3">No vehicles or launches linked yet.</p>
       )}
     </div>
   );

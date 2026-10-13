@@ -27,10 +27,30 @@ export interface GeoPos {
   speedKmS: number;
 }
 
+// twoline2satrec parses the element set AND runs SGP4 initialisation — the
+// expensive part. Callers propagate the same TLE every frame (ride-along
+// camera), 240× for an orbit path, or 1440× for a next-pass search, so parse
+// once and reuse. Small LRU: only a handful of TLEs are ever live at once.
+const SATREC_CACHE_MAX = 64;
+const satrecs = new Map<string, satellite.SatRec>();
+
+export function satrecFor(line1: string, line2: string): satellite.SatRec {
+  const key = `${line1}\n${line2}`;
+  let rec = satrecs.get(key);
+  if (rec) {
+    satrecs.delete(key); // refresh LRU position
+  } else {
+    rec = satellite.twoline2satrec(line1, line2);
+    if (satrecs.size >= SATREC_CACHE_MAX) satrecs.delete(satrecs.keys().next().value as string);
+  }
+  satrecs.set(key, rec);
+  return rec;
+}
+
 // Propagate a TLE to a given instant → geodetic position + speed.
 export function propagateTLE(line1: string, line2: string, when: Date): GeoPos | null {
   try {
-    const satrec = satellite.twoline2satrec(line1, line2);
+    const satrec = satrecFor(line1, line2);
     const pv = satellite.propagate(satrec, when);
     if (!pv || !pv.position || typeof pv.position === "boolean") return null;
     const gmst = satellite.gstime(when);
@@ -50,7 +70,7 @@ export function propagateTLE(line1: string, line2: string, when: Date): GeoPos |
 
 // Sample one full orbit (~period) into a path of scene points.
 export function orbitPath(line1: string, line2: string, samples = 180): Vec3[] {
-  const satrec = satellite.twoline2satrec(line1, line2);
+  const satrec = satrecFor(line1, line2);
   // Mean motion (rev/day) → period in minutes.
   const revsPerDay = (satrec.no * 60 * 24) / (2 * Math.PI);
   const periodMin = revsPerDay > 0 ? 1440 / revsPerDay : 92;

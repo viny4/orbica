@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 export const runtime = "edge";
 
 import { api } from "@/lib/api";
@@ -8,14 +9,13 @@ import { Flag } from "@/components/Flag";
 import { AgencyLogo } from "@/components/AgencyLogo";
 import { country } from "@/lib/flags";
 
-export const metadata = { title: "Agencies — Orbica" };
+export const metadata: Metadata = {
+  title: "Agencies — Orbica",
+  description: "Space agencies and launch operators worldwide, grouped by nation and ranked by launch activity.",
+};
 
-export default async function AgenciesPage({
-  searchParams,
-}: {
-  searchParams: { sort?: string };
-}) {
-  const sort = searchParams.sort || "launches";
+export default async function AgenciesPage({ searchParams }: { searchParams: { sort?: string } }) {
+  const sort = searchParams.sort === "name" ? "name" : "launches";
   const agencies = await safe(api.agencies(), []);
 
   // Group by nation, ordered by total launch activity.
@@ -28,13 +28,27 @@ export default async function AgenciesPage({
     g.agencies.push(a);
     g.total += a.total_launches ?? 0;
   }
-  
+
   const groups = [...byCountry.values()];
-  if (sort === "name") {
-    groups.sort((a, b) => a.name.localeCompare(b.name));
-  } else {
-    groups.sort((a, b) => b.total - a.total);
+  groups.sort(sort === "name" ? (a, b) => a.name.localeCompare(b.name) : (a, b) => b.total - a.total);
+  for (const g of groups) {
+    g.agencies.sort((a, b) =>
+      sort === "name" ? (a.abbrev || a.name).localeCompare(b.abbrev || b.name) : (b.total_launches ?? 0) - (a.total_launches ?? 0),
+    );
   }
+
+  const sortLink = (key: "launches" | "name", label: string) => (
+    <Link
+      href={key === "launches" ? "/agencies" : "/agencies?sort=name"}
+      scroll={false}
+      aria-current={sort === key ? "page" : undefined}
+      className={`px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider transition-colors ${
+        sort === key ? "bg-accent/15 text-accent" : "text-ink-3 hover:text-ink"
+      }`}
+    >
+      {label}
+    </Link>
+  );
 
   return (
     <div>
@@ -42,74 +56,49 @@ export default async function AgenciesPage({
         eyebrow="Operators · by nation"
         title="Agencies"
         meta={`${agencies.length} agencies across ${groups.length} nations`}
+        actions={
+          <div className="flex items-center gap-1 border border-line p-1" role="group" aria-label="Sort">
+            {sortLink("launches", "By launches")}
+            {sortLink("name", "A–Z")}
+          </div>
+        }
       />
 
-      <div className="flex justify-end mb-8">
-        <div className="flex items-center gap-1 bg-[#06080f] border border-white/10 p-1 rounded-sm">
-          <Link
-            href="/agencies?sort=launches"
-            className={`px-3 py-1.5 text-[10px] uppercase font-mono tracking-wider rounded-sm transition-colors ${sort !== "name" ? "bg-[var(--color-space-accent-2)]/20 text-[var(--color-space-accent-2)]" : "text-white/40 hover:text-white"}`}
-          >
-            Sort by Count
-          </Link>
-          <Link
-            href="/agencies?sort=name"
-            className={`px-3 py-1.5 text-[10px] uppercase font-mono tracking-wider rounded-sm transition-colors ${sort === "name" ? "bg-[var(--color-space-accent-2)]/20 text-[var(--color-space-accent-2)]" : "text-white/40 hover:text-white"}`}
-          >
-            Sort A-Z
-          </Link>
-        </div>
-      </div>
-
       {agencies.length === 0 ? (
-        <EmptyState message="No agencies yet — run the seed." />
+        <EmptyState message="The agency directory is unavailable right now — please try again shortly." />
       ) : (
         <div className="space-y-12">
           {groups.map((g) => {
             const isSoviet = g.code === "SUN";
             return (
-              <section key={g.code}>
-                <div className={`flex items-center gap-4 mb-5 border-b pb-3 ${isSoviet ? "border-red-900/50" : "border-white/10"}`}>
-                  <Flag code={g.code} className="w-10 h-7 rounded-sm" />
-                  <h2 className={`text-lg font-light uppercase tracking-[0.18em] ${isSoviet ? "text-red-400" : ""}`}>
-                    {g.name}
-                  </h2>
-                  <span className={`ml-auto text-[11px] tracking-[0.2em] uppercase font-mono ${isSoviet ? "text-red-400/50" : "text-white/35"}`}>
-                    {g.agencies.length} {g.agencies.length === 1 ? "agency" : "agencies"} · {g.total} launches
+              <section key={g.code} id={`nation-${g.code.toLowerCase()}`} className="scroll-mt-24">
+                <div className={`mb-5 flex items-center gap-4 border-b pb-3 ${isSoviet ? "border-danger/30" : "border-line"}`}>
+                  <Flag code={g.code} className="h-7 w-10 rounded-sm" />
+                  <h2 className={`text-lg font-light uppercase tracking-[0.18em] ${isSoviet ? "text-danger" : ""}`}>{g.name}</h2>
+                  <span className={`ml-auto font-mono text-[11px] uppercase tracking-[0.2em] ${isSoviet ? "text-danger/60" : "text-ink-4"}`}>
+                    {g.agencies.length} {g.agencies.length === 1 ? "agency" : "agencies"} · {g.total.toLocaleString("en-US")} launches
                   </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5">
-                  {g.agencies
-                    .sort((a, b) => sort === "name" 
-                      ? (a.abbrev || a.name).localeCompare(b.abbrev || b.name) 
-                      : (b.total_launches ?? 0) - (a.total_launches ?? 0)
-                    )
-                    .map((a) => (
-                      <Link
-                        key={a.id}
-                        href={`/agencies/${a.slug}`}
-                        className={`group flex items-center gap-3 p-4 transition-colors ${isSoviet ? "bg-[#1a0808] hover:bg-[#2a0c0c]" : "bg-[#06080f] hover:bg-[#0c1322]"}`}
-                      >
-                        <div className="relative flex-shrink-0">
-                          <AgencyLogo src={a.logo_url} name={a.name} className="w-12 h-12" />
-                          <Flag
-                            code={a.country_code}
-                            className={`absolute -bottom-1 -right-1 w-4 h-3 rounded-[2px] ring-1 ${isSoviet ? "ring-[#1a0808]" : "ring-[#06080f]"}`}
-                          />
+                <div className="tile-grid sm:grid-cols-2 lg:grid-cols-3">
+                  {g.agencies.map((a) => (
+                    <Link
+                      key={a.id}
+                      href={`/agencies/${a.slug}`}
+                      className={`tile group flex items-center gap-3 p-4 ${isSoviet ? "!bg-[#140808] hover:!bg-[#220c0c]" : ""}`}
+                    >
+                      <div className="relative shrink-0">
+                        <AgencyLogo src={a.logo_url} name={a.name} className="h-12 w-12" />
+                        <Flag code={a.country_code} className="absolute -bottom-1 -right-1 h-3 w-4 rounded-[2px] ring-1 ring-surface" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className={`truncate font-light transition-colors ${isSoviet ? "group-hover:text-danger" : "group-hover:text-accent"}`}>
+                          {a.abbrev || a.name}
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <div className={`font-light truncate transition-colors ${isSoviet ? "group-hover:text-red-400" : "group-hover:text-[var(--color-space-accent-2)]"}`}>
-                            {a.abbrev || a.name}
-                          </div>
-                          <div className={`text-[11px] font-mono uppercase tracking-wide truncate ${isSoviet ? "text-red-400/50" : "text-white/40"}`}>
-                            {a.agency_type ?? "agency"}
-                          </div>
-                        </div>
-                        <div className={`font-mono text-lg font-light tabular-nums ${isSoviet ? "text-red-400/70" : "text-white/60"}`}>
-                          {a.total_launches}
-                        </div>
-                      </Link>
-                    ))}
+                        <div className="truncate font-mono text-[11px] uppercase tracking-wide text-ink-4">{a.agency_type ?? "agency"}</div>
+                      </div>
+                      <div className="font-mono text-lg font-light tabular-nums text-ink-2">{a.total_launches}</div>
+                    </Link>
+                  ))}
                 </div>
               </section>
             );

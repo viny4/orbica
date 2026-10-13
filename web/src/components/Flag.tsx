@@ -6,7 +6,7 @@ export function Flag({ code, className = "" }: { code?: string | null; className
   if (!url) {
     return (
       <span
-        className={`inline-grid place-items-center bg-white/5 border border-white/10 text-[9px] tracking-wider text-white/40 font-mono ${className}`}
+        className={`inline-grid place-items-center bg-white/5 border border-line text-[9px] tracking-wider text-ink-4 font-mono ${className}`}
       >
         {code && code !== "???" ? code : "—"}
       </span>
@@ -21,7 +21,7 @@ export function Flag({ code, className = "" }: { code?: string | null; className
       title={c?.name ?? undefined}
       loading="lazy"
       decoding="async"
-      className={`object-cover border border-white/10 ${className}`}
+      className={`object-cover border border-line ${className}`}
     />
   );
 }

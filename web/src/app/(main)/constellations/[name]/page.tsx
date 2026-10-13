@@ -1,16 +1,13 @@
-import { api } from "@/lib/api";
-import { safe } from "@/components/EmptyState";
+import { notFound } from "next/navigation";
+import type { Metadata } from "next";
+import { api, type Satellite } from "@/lib/api";
 import { PageHeader, Chip } from "@/components/ui";
-import dynamic from "next/dynamic";
-import Link from "next/link";
 import ClientConstellationContent from "./ClientConstellationContent";
 
 export const runtime = "edge";
 
 interface Props {
-  params: {
-    name: string;
-  };
+  params: { name: string };
 }
 
 // Capitalize the constellation name for display (e.g., starlink -> Starlink, gps -> GPS)
@@ -24,55 +21,34 @@ function formatConstellationName(slug: string): string {
     .join(" ");
 }
 
-export async function generateMetadata({ params }: Props) {
+// An empty member list means the constellation doesn't exist (the API answers
+// [] rather than 404); an upstream failure throws and reaches the error page.
+async function load(name: string): Promise<Satellite[]> {
+  const sats = await api.constellation(decodeURIComponent(name));
+  return Array.isArray(sats) ? sats : [];
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const sats = await load(params.name).catch(() => undefined);
+  if (sats && sats.length === 0) notFound();
   const displayName = formatConstellationName(params.name);
   return {
     title: `${displayName} Constellation — Orbica`,
-    description: `Real-time 3D tracking and telemetry for the ${displayName} satellite network.`,
+    description: `Real-time 3D tracking and telemetry for the ${displayName} satellite network${sats ? ` — ${sats.length.toLocaleString("en-US")} satellites` : ""}.`,
   };
 }
 
 export default async function ConstellationPage({ params }: Props) {
-  const nameDecoded = decodeURIComponent(params.name);
-  const satellites = await safe(api.constellation(nameDecoded), []);
+  const satellites = await load(params.name);
+  if (!satellites.length) notFound();
 
   const displayName = formatConstellationName(params.name);
-
-  if (!satellites.length) {
-    return (
-      <div>
-        <PageHeader
-          title={displayName}
-          back={{ href: "/satellites", label: "Satellites" }}
-          eyebrow="Constellation"
-        />
-        <div className="border border-white/10 bg-white/[0.015] p-12 text-center">
-          <p className="text-white/40 text-sm">
-            No active satellites found in database for constellation &ldquo;{nameDecoded}&rdquo;.
-          </p>
-          <div className="mt-6">
-            <Link
-              href="/satellites"
-              className="text-xs font-mono uppercase tracking-widest text-[var(--color-space-accent-2)] hover:underline"
-            >
-              Back to Catalog
-            </Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Calculate statistics from the retrieved constellation satellites
   const activeSats = satellites.filter((s) => s.status?.toLowerCase() === "active").length;
-  
-  // Altitudes
+
   const peris = satellites.map((s) => Number(s.altitude_periapsis_km || 0)).filter((v) => v > 0);
   const apos = satellites.map((s) => Number(s.altitude_apoapsis_km || 0)).filter((v) => v > 0);
   const minPeri = peris.length ? Math.min(...peris) : 0;
   const maxApo = apos.length ? Math.max(...apos) : 0;
-  
-  // Inclination
   const incs = satellites.map((s) => Number(s.inclination_deg || 0)).filter((v) => v > 0);
   const avgInc = incs.length ? incs.reduce((a, b) => a + b, 0) / incs.length : 0;
 
@@ -84,24 +60,21 @@ export default async function ConstellationPage({ params }: Props) {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full flex-col">
       <PageHeader
-        eyebrow="Satellite Network"
+        eyebrow="Satellite network"
         title={`${displayName} Constellation`}
-        back={{ href: "/satellites", label: "Catalog" }}
+        back={{ href: "/constellations", label: "Constellations" }}
         meta={
-          <span className="flex items-center gap-2">
-            <Chip tone="accent">{stats.active} / {stats.total} operational</Chip>
-            <Chip>{satellites[0].orbit_type || "Various Orbits"}</Chip>
+          <span className="flex flex-wrap items-center gap-2">
+            <Chip tone="accent">
+              {stats.active.toLocaleString("en-US")} / {stats.total.toLocaleString("en-US")} operational
+            </Chip>
+            <Chip>{satellites[0].orbit_type || "Various orbits"}</Chip>
           </span>
         }
       />
-
-      <ClientConstellationContent
-        satellites={satellites}
-        stats={stats}
-        constellationName={displayName}
-      />
+      <ClientConstellationContent satellites={satellites} stats={stats} constellationName={displayName} />
     </div>
   );
 }

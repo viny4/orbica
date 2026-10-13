@@ -1,50 +1,44 @@
 import Link from "next/link";
+import type { LaunchRow } from "@/lib/api";
+import { Outcome, StatusDot } from "@/components/ui";
 
-export function OnThisDay({ launches }: { launches: any[] }) {
+// "On this day" highlight block. Outcomes come from the shared <Outcome>, which
+// understands the stored lowercase values (the old "Success"/"Failure" string
+// comparisons never matched, so no outcome was ever shown).
+export function OnThisDay({ launches }: { launches: LaunchRow[] }) {
   if (!launches || launches.length === 0) return null;
 
-  const today = new Date();
-  const dateStr = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" }).format(today);
+  const dateStr = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", timeZone: "UTC" }).format(new Date());
 
   return (
-    <section className="mb-16 border border-[var(--color-space-accent-2)]/30 bg-[var(--color-space-accent-2)]/5 p-6 md:p-8">
-      <div className="flex items-center gap-3 mb-6 border-b border-[var(--color-space-accent-2)]/20 pb-4">
-        <div className="w-2 h-2 rounded-full bg-[var(--color-space-accent-2)] animate-pulse" />
-        <h2 className="text-sm tracking-[0.2em] uppercase text-[var(--color-space-accent-2)] font-mono">
-          On This Day in Orbital History
+    <section className="mb-16 border border-accent/25 bg-accent/[0.03] p-6 md:p-8" aria-labelledby="otd-title">
+      <div className="mb-6 flex items-center gap-3 border-b border-accent/15 pb-4">
+        <StatusDot tone="accent" pulse />
+        <h2 id="otd-title" className="font-mono text-sm uppercase tracking-[0.2em] text-accent">
+          On this day in orbital history
         </h2>
-        <span className="ml-auto text-xs font-mono text-white/40">{dateStr}</span>
+        <span className="ml-auto font-mono text-xs text-ink-3">{dateStr}</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-[var(--color-space-accent-2)]/20">
-        {launches.slice(0, 3).map((l: any) => (
-          <Link
-            key={l.id}
-            href={`/launches/${l.id}`}
-            className="group block bg-[#06080f] p-5 hover:bg-[#0c1322] transition-colors"
-          >
-            <div className="text-[10px] tracking-[0.25em] uppercase text-[var(--color-space-accent)] font-mono mb-2">
-              {l.launch_year}
+      <div className="grid grid-cols-1 gap-px bg-accent/15 sm:grid-cols-2 lg:grid-cols-3">
+        {launches.slice(0, 3).map((l) => (
+          <Link key={l.id} href={`/launches/${l.id}`} className="tile group p-5">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="font-mono text-[10px] uppercase tracking-[0.25em] text-accent-blue">{l.launch_year}</span>
+              <Outcome outcome={l.outcome} />
             </div>
-            <div className="font-light truncate group-hover:text-[var(--color-space-accent-2)] transition-colors text-lg">
-              {l.name}
+            <div className="truncate text-lg font-light transition-colors group-hover:text-accent">{l.name}</div>
+            <div className="mt-2 truncate font-mono text-[11px] uppercase tracking-wide text-ink-4">
+              {l.rocket_name || "Unknown rocket"} · {l.agency_abbrev || l.agency_name || "Unknown agency"}
             </div>
-            <div className="text-[11px] text-white/40 font-mono uppercase tracking-wide mt-2">
-              {l.rocket_name || "Unknown Rocket"} · {l.agency_abbrev || l.agency_name || "Unknown Agency"}
-            </div>
-            {l.outcome === "Success" ? (
-              <div className="mt-3 text-[10px] uppercase tracking-wider text-emerald-400">Success</div>
-            ) : l.outcome === "Failure" ? (
-              <div className="mt-3 text-[10px] uppercase tracking-wider text-red-400">Failure</div>
-            ) : null}
           </Link>
         ))}
       </div>
       {launches.length > 3 && (
         <div className="mt-4 text-center">
-          <span className="text-[10px] tracking-[0.2em] uppercase text-white/30 font-mono">
-            + {launches.length - 3} more launches on this day
-          </span>
+          <Link href="/on-this-day" className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink-3 hover:text-ink">
+            See every launch on this day →
+          </Link>
         </div>
       )}
     </section>
