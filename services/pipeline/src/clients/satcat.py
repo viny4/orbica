@@ -13,7 +13,7 @@ import logging
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from src.clients.http_retry import http_retry
 
 from src.config import settings
 
@@ -37,12 +37,8 @@ class SatcatClient:
     def __exit__(self, *_e: object) -> None:
         self.close()
 
-    @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
-        wait=wait_exponential(multiplier=2, min=2, max=60),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    )
+    # Transient errors only (429/5xx/network), honouring Retry-After — see http_retry.
+    @http_retry(attempts=5, cap=60)
     def records(self, group: str = "active") -> list[dict[str, Any]]:
         url = f"{settings.celestrak_base_url}/satcat/records.php"
         r = self._c.get(url, params={"GROUP": group, "FORMAT": "json"})

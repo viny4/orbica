@@ -129,6 +129,14 @@ def vehicle_row(cfg: dict[str, Any], family_id: str | None) -> dict[str, Any]:
         "successful_launches": cfg.get("successful_launches") or 0,
         "failed_launches": cfg.get("failed_launches") or 0,
         "image_url": cdn(g(cfg, "image", "image_url") or cfg.get("image_url")),
+        # Card-sized rendition + attribution. Photos are licensed (often CC
+        # BY-NC) and the originals run to several MB; lists use the thumbnail
+        # and detail pages show the credit. Columns arrive with migration 16;
+        # upsert_many skips them on databases that don't have them yet.
+        "thumbnail_url": cdn(g(cfg, "image", "thumbnail_url")),
+        "image_credit": g(cfg, "image", "credit"),
+        "image_license_name": g(cfg, "image", "license", "name"),
+        "image_license_url": g(cfg, "image", "license", "link"),
         "description": cfg.get("description"),
         "ll2_id": cfg.get("id"),
     }

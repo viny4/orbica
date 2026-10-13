@@ -20,6 +20,10 @@ from datetime import datetime, timedelta, timezone
 # staying well under LL2's rate limit.
 RECENT_DAYS = 45
 
+# Agencies, rockets and pads (~1,100 rows) change a few times a month; refresh
+# them daily instead of every 6h run. Launches still sync every run.
+REFERENCE_MAX_AGE_HOURS = 24
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
 )
@@ -90,9 +94,10 @@ def main() -> int:
     # Core: launches + agencies + rockets (drives "new launch" updates).
     # Reference data still refreshes fully; only the launch scan is windowed.
     def run_launches():
-        stats = historical_seed.main(launches_net_gte=since)
-        added = sum(s["added"] for s in stats.values())
-        updated = sum(s["updated"] for s in stats.values())
+        stats = historical_seed.main(launches_net_gte=since, reference_max_age_hours=REFERENCE_MAX_AGE_HOURS)
+        entities = [v for v in stats.values() if isinstance(v, dict)]
+        added = sum(s["added"] for s in entities)
+        updated = sum(s["updated"] for s in entities)
         return added, updated, stats
 
     critical_ok &= _step("launches", run_launches)

@@ -16,7 +16,7 @@ import os
 from typing import Any
 
 from src.clients.ll2 import LL2Client
-from src.db.pool import cursor, refresh_year_summary, upsert
+from src.db.pool import cursor, refresh_year_summary, upsert, upsert_many
 from src.seed import mappers as m
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -33,35 +33,33 @@ def _lookup_ll2_to_id(table: str) -> dict[int, str]:
     return out
 
 
+def _tally(rows: list[dict], results: list[tuple[str | None, str]]) -> tuple[int, int, dict]:
+    """(added, updated, details) from upsert_many results; unchanged rows are
+    counted separately instead of being reported as 'updated' every run."""
+    added = [r["name"] for r, (_, st) in zip(rows, results) if st == "inserted"]
+    updated = [r["name"] for r, (_, st) in zip(rows, results) if st == "updated"]
+    unchanged = sum(1 for _, st in results if st == "unchanged")
+    return len(added), len(updated), {"added_items": added, "updated_items": updated, "unchanged": unchanged}
+
+
 def seed_agencies(client: LL2Client) -> tuple[dict[int, str], int, int, dict]:
     log.info("seeding agencies...")
-    added_names = []
-    updated_names = []
-    for a in client.agencies():
-        row = m.agency_row(a)
-        if row["ll2_id"] is None:
-            continue
-        # description + founding_year are Wikipedia-enriched where LL2 is null;
-        # keep them enricher-owned so a re-sync can't null them back out.
-        res = upsert(
-            "agencies", row, conflict="ll2_id",
-            update_cols=[k for k in row if k not in ("ll2_id", "description", "founding_year")],
-            return_inserted=True,
-        )
-        _, inserted = res if isinstance(res, tuple) else (res, False)
-        if inserted:
-            added_names.append(row["name"])
-        else:
-            updated_names.append(row["name"])
-    log.info("agencies upserted: added %d, updated %d", len(added_names), len(updated_names))
-    return _lookup_ll2_to_id("agencies"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
+    rows = [r for r in (m.agency_row(a) for a in client.agencies()) if r["ll2_id"] is not None]
+    # description + founding_year are Wikipedia-enriched where LL2 is null;
+    # keep them enricher-owned so a re-sync can't null them back out.
+    results = upsert_many(
+        "agencies", rows, conflict="ll2_id",
+        update_cols=[k for k in (rows[0] if rows else {}) if k not in ("ll2_id", "description", "founding_year")],
+    )
+    added, updated, details = _tally(rows, results)
+    log.info("agencies: added %d, updated %d, unchanged %d", added, updated, details["unchanged"])
+    return _lookup_ll2_to_id("agencies"), added, updated, details
 
 
 def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict[int, str], int, int, dict]:
     log.info("seeding rocket families + vehicles...")
     fam_by_name: dict[str, str] = {}
-    added_names = []
-    updated_names = []
+    vehicles: list[dict] = []
     for cfg in client.launcher_configs():
         manu_ll2 = (cfg.get("manufacturer") or {}).get("id")
         manufacturer_id = agency_by_ll2.get(manu_ll2)
@@ -90,22 +88,18 @@ def seed_rockets(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict
                 fam_by_name[fam["name"]] = family_id
 
         veh = m.vehicle_row(cfg, family_id)
-        if veh["ll2_id"] is None:
-            continue
-        # `description` is enriched from Wikipedia where LL2 is null — don't let a
-        # re-sync clobber it. image_url stays updatable (it's CDN-normalised).
-        res = upsert(
-            "rocket_vehicles", veh, conflict="ll2_id",
-            update_cols=[k for k in veh if k not in ("ll2_id", "description")],
-            return_inserted=True,
-        )
-        _, inserted = res if isinstance(res, tuple) else (res, False)
-        if inserted:
-            added_names.append(veh["name"])
-        else:
-            updated_names.append(veh["name"])
-    log.info("rocket vehicles upserted: added %d, updated %d", len(added_names), len(updated_names))
-    return _lookup_ll2_to_id("rocket_vehicles"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
+        if veh["ll2_id"] is not None:
+            vehicles.append(veh)
+
+    # `description` is enriched from Wikipedia where LL2 is null — don't let a
+    # re-sync clobber it. image_url stays updatable (it's CDN-normalised).
+    results = upsert_many(
+        "rocket_vehicles", vehicles, conflict="ll2_id",
+        update_cols=[k for k in (vehicles[0] if vehicles else {}) if k not in ("ll2_id", "description")],
+    )
+    added, updated, details = _tally(vehicles, results)
+    log.info("rocket vehicles: added %d, updated %d, unchanged %d", added, updated, details["unchanged"])
+    return _lookup_ll2_to_id("rocket_vehicles"), added, updated, details
 
 
 def derive_pad_operators() -> int:
@@ -146,26 +140,18 @@ def _upsert_family_by_name(fam: dict) -> str | None:
 
 def seed_pads(client: LL2Client, agency_by_ll2: dict[int, str]) -> tuple[dict[int, str], int, int, dict]:
     log.info("seeding launch sites...")
-    added_names = []
-    updated_names = []
-    for pad in client.pads():
-        row = m.pad_row(pad, None)
-        if row["ll2_id"] is None:
-            continue
-        # operator_id is derived (from the agency that launches there most), not
-        # carried by LL2 — keep it out of the update so a re-sync can't null it.
-        res = upsert(
-            "launch_sites", row, conflict="ll2_id",
-            update_cols=[k for k in row if k not in ("ll2_id", "operator_id")],
-            return_inserted=True,
-        )
-        _, inserted = res if isinstance(res, tuple) else (res, False)
-        if inserted:
-            added_names.append(row["name"])
-        else:
-            updated_names.append(row["name"])
-    log.info("launch sites upserted: added %d, updated %d", len(added_names), len(updated_names))
-    return _lookup_ll2_to_id("launch_sites"), len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
+    rows = [r for r in (m.pad_row(p, None) for p in client.pads()) if r["ll2_id"] is not None]
+    # operator_id is derived (from the agency that launches there most), not
+    # carried by LL2 — keep it out of the update so a re-sync can't null it.
+    # skip_unchanged off: `location` is geography, which has no row equality.
+    results = upsert_many(
+        "launch_sites", rows, conflict="ll2_id",
+        update_cols=[k for k in (rows[0] if rows else {}) if k not in ("ll2_id", "operator_id")],
+        skip_unchanged=False,
+    )
+    added, updated, details = _tally(rows, results)
+    log.info("launch sites: added %d, updated %d", added, updated)
+    return _lookup_ll2_to_id("launch_sites"), added, updated, details
 
 
 def seed_launches(
@@ -176,35 +162,23 @@ def seed_launches(
     net_gte: str = "1957-01-01",
 ) -> tuple[int, int, dict]:
     log.info("seeding launches (%s → now)...", net_gte)
-    added_names = []
-    updated_names = []
+    rows = []
     for launch in client.launches(net_gte=net_gte):
-        rocket_cfg_id = m.g(launch, "rocket", "configuration", "id")
-        agency_id_ll2 = m.g(launch, "launch_service_provider", "id")
-        pad_id_ll2 = m.g(launch, "pad", "id")
-
         row = m.launch_row(
             launch,
-            rocket_id=rocket_by_ll2.get(rocket_cfg_id),
-            agency_id=agency_by_ll2.get(agency_id_ll2),
-            site_id=site_by_ll2.get(pad_id_ll2),
+            rocket_id=rocket_by_ll2.get(m.g(launch, "rocket", "configuration", "id")),
+            agency_id=agency_by_ll2.get(m.g(launch, "launch_service_provider", "id")),
+            site_id=site_by_ll2.get(m.g(launch, "pad", "id")),
         )
-        if row["ll2_uuid"] is None:
-            continue
-        res = upsert(
-            "launch_events", row, conflict="ll2_uuid",
-            update_cols=[k for k in row if k != "ll2_uuid"],
-            return_inserted=True,
-        )
-        _, inserted = res if isinstance(res, tuple) else (res, False)
-        if inserted:
-            added_names.append(row["name"])
-        else:
-            updated_names.append(row["name"])
-        if (len(added_names) + len(updated_names)) % 500 == 0:
-            log.info("  ...%d launches", (len(added_names) + len(updated_names)))
-    log.info("launches upserted: added %d, updated %d", len(added_names), len(updated_names))
-    return len(added_names), len(updated_names), {"added_items": added_names, "updated_items": updated_names}
+        if row["ll2_uuid"] is not None:
+            rows.append(row)
+    results = upsert_many(
+        "launch_events", rows, conflict="ll2_uuid",
+        update_cols=[k for k in (rows[0] if rows else {}) if k != "ll2_uuid"],
+    )
+    added, updated, details = _tally(rows, results)
+    log.info("launches: added %d, updated %d, unchanged %d", added, updated, details["unchanged"])
+    return added, updated, details
 
 
 def seed_reference_only() -> None:
@@ -218,11 +192,32 @@ def seed_reference_only() -> None:
     log.info("reference seed complete (agencies/rockets/pads).")
 
 
+def _reference_age_hours() -> float | None:
+    """Hours since reference data (agencies/rockets/pads) last refreshed
+    successfully, per sync_logs; None if never recorded."""
+    with cursor() as cur:
+        cur.execute(
+            """
+            SELECT EXTRACT(EPOCH FROM (NOW() - MAX(timestamp))) / 3600 AS h
+            FROM sync_logs
+            WHERE job_name = 'launches' AND status = 'success'
+              AND details->>'reference_refreshed' = 'true'
+            """
+        )
+        row = cur.fetchone()
+    return float(row["h"]) if row and row["h"] is not None else None
+
+
 def main(
     reference_from_dev: bool = True,
     launches_net_gte: str = "1957-01-01",
     seed_engines: bool = False,
+    reference_max_age_hours: float | None = None,
 ) -> dict[str, Any]:
+    """Seed/refresh from LL2. With ``reference_max_age_hours`` set, the
+    reference data (agencies, rockets, pads — ~1,100 rows that change a few
+    times a month) is only re-fetched once it's older than that; the recurring
+    sync passes 24 so three of four daily runs touch launches only."""
     from src.config import settings
 
     stats = {
@@ -234,16 +229,26 @@ def main(
 
     # Reference data (agencies/rockets/pads) is complete on the dev cache and
     # not rate-limited; launches need the full production history.
-    ref_url = settings.ll2_dev_base_url if reference_from_dev else settings.ll2_base_url
-    with LL2Client(base_url=ref_url) as ref:
-        agency_by_ll2, ag_add, ag_upd, ag_det = seed_agencies(ref)
-        stats["agencies"] = {"added": ag_add, "updated": ag_upd, "details": ag_det}
-        
-        rocket_by_ll2, r_add, r_upd, r_det = seed_rockets(ref, agency_by_ll2)
-        stats["rockets"] = {"added": r_add, "updated": r_upd, "details": r_det}
-        
-        site_by_ll2, s_add, s_upd, s_det = seed_pads(ref, agency_by_ll2)
-        stats["launch_sites"] = {"added": s_add, "updated": s_upd, "details": s_det}
+    age = _reference_age_hours() if reference_max_age_hours is not None else None
+    refresh_reference = reference_max_age_hours is None or age is None or age >= reference_max_age_hours
+    stats["reference_refreshed"] = refresh_reference
+
+    if refresh_reference:
+        ref_url = settings.ll2_dev_base_url if reference_from_dev else settings.ll2_base_url
+        with LL2Client(base_url=ref_url) as ref:
+            agency_by_ll2, ag_add, ag_upd, ag_det = seed_agencies(ref)
+            stats["agencies"] = {"added": ag_add, "updated": ag_upd, "details": ag_det}
+
+            rocket_by_ll2, r_add, r_upd, r_det = seed_rockets(ref, agency_by_ll2)
+            stats["rockets"] = {"added": r_add, "updated": r_upd, "details": r_det}
+
+            site_by_ll2, s_add, s_upd, s_det = seed_pads(ref, agency_by_ll2)
+            stats["launch_sites"] = {"added": s_add, "updated": s_upd, "details": s_det}
+    else:
+        log.info("reference data refreshed %.1fh ago (< %sh) — reusing it", age, reference_max_age_hours)
+        agency_by_ll2 = _lookup_ll2_to_id("agencies")
+        rocket_by_ll2 = _lookup_ll2_to_id("rocket_vehicles")
+        site_by_ll2 = _lookup_ll2_to_id("launch_sites")
 
     # `launches_net_gte` lets a recurring sync pull only a recent window
     # (recent + upcoming) instead of re-scanning the whole catalogue.

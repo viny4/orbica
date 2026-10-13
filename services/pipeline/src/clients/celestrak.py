@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Iterator
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from src.clients.http_retry import http_retry
 
 from src.config import settings
 
@@ -48,12 +48,8 @@ class CelesTrakClient:
     def __exit__(self, *_exc: object) -> None:
         self.close()
 
-    @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
-        wait=wait_exponential(multiplier=2, min=2, max=60),
-        stop=stop_after_attempt(5),
-        reraise=True,
-    )
+    # Transient errors only (429/5xx/network), honouring Retry-After — see http_retry.
+    @http_retry(attempts=5, cap=60)
     def _get_text(self, params: dict[str, str]) -> str:
         url = f"{self.base_url}/NORAD/elements/gp.php"
         resp = self._client.get(url, params=params)

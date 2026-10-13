@@ -79,26 +79,35 @@ def seed_group(group: str = "active") -> tuple[int, int, dict]:
         )
         id_map = {row["norad_id"]: str(row["id"]) for row in cur.fetchall()}
         
+        # Only store an element set we don't already have for that satellite.
+        # Line 1 carries the epoch, so an unchanged TLE has an identical line 1.
+        # This makes re-runs idempotent and stops the "active" and constellation
+        # groups (which overlap — every Starlink is in both) from writing the
+        # same TLE twice per run.
         tle_rows = [
-            (id_map[tle.norad_id], captured, tle.line1, tle.line2, "celestrak")
+            (sat_id, captured, tle.line1, tle.line2, "celestrak", sat_id, tle.line1)
             for tle in tles
-            if tle.norad_id in id_map
+            if (sat_id := id_map.get(tle.norad_id))
         ]
-        
-        log.info("bulk inserting %d TLE snapshots...", len(tle_rows))
         cur.executemany(
             """
             INSERT INTO tle_snapshots (satellite_id, captured_at, tle_line1, tle_line2, source)
-            VALUES (%s, %s, %s, %s, %s)
+            SELECT %s, %s, %s, %s, %s
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tle_snapshots t WHERE t.satellite_id = %s AND t.tle_line1 = %s
+            )
             """,
             tle_rows
         )
+        new_snapshots = max(cur.rowcount, 0)
+        log.info("TLE snapshots: %d new, %d unchanged", new_snapshots, len(tle_rows) - new_snapshots)
         
     log.info("group %s: %d satellites + TLEs upserted", group, len(tles))
     return len(added_names), len(updated_names), {
         "added_items": added_names,
         "updated_items": updated_names,
-        "tle_snapshots_added": len(tle_rows),
+        "tle_snapshots_added": new_snapshots,
+        "tle_unchanged": len(tle_rows) - new_snapshots,
         "total_fetched": len(tles)
     }
 

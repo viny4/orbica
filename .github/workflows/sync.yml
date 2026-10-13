@@ -2,16 +2,24 @@ name: Orbica Data Sync
 
 on:
   schedule:
-    # Every 6 hours. Each run keeps the auto-suspending Neon DB awake for
-    # ~20 min, so cadence is a direct compute cost — 4/day fits the free tier
-    # comfortably, 6/day was borderline. Launch/TLE freshness barely differs.
+    # Every 6 hours. Launch/TLE freshness barely differs at a faster cadence.
     - cron: '0 */6 * * *'
   workflow_dispatch: # Allows manual trigger from GitHub UI
+
+# Never run two syncs at once: a manual dispatch during a scheduled run would
+# double the LL2/CelesTrak load (CelesTrak answers repeat downloads with 403)
+# and race the TLE prune. A second trigger waits for the first to finish.
+concurrency:
+  group: orbica-data-sync
+  cancel-in-progress: false
 
 jobs:
   sync:
     name: Sync Space Data
     runs-on: ubuntu-latest
+    # A healthy run takes minutes; without a cap a hung request could hold the
+    # runner (and the concurrency lock) for GitHub's 6-hour default.
+    timeout-minutes: 45
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -38,12 +46,12 @@ jobs:
           python -m src.sync.refresh
 
       # Computed "space intelligence" — keeps space_weather, reentries and
-      # conjunctions fresh. Each is best-effort so one failure can't block the run.
+      # conjunctions fresh. Each job is isolated and its outcome is recorded in
+      # sync_logs; the step fails only if every job failed.
       - name: Refresh Intel (space weather, reentry, conjunctions)
+        if: ${{ !cancelled() }}
         env:
           POSTGRES_URL: ${{ secrets.POSTGRES_URL }}
         working-directory: services/intel
         run: |
-          python -m src.spaceweather || echo "spaceweather step failed"
-          python -m src.reentry      || echo "reentry step failed"
-          python -m src.conjunctions || echo "conjunctions step failed"
+          python -m src.run

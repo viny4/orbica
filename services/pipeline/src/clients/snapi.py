@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from src.clients.http_retry import http_retry
 
 
 class SnapiClient:
@@ -27,12 +27,8 @@ class SnapiClient:
     def __exit__(self, *_e: object) -> None:
         self.close()
 
-    @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
-        wait=wait_exponential(multiplier=2, min=2, max=30),
-        stop=stop_after_attempt(4),
-        reraise=True,
-    )
+    # Transient errors only (429/5xx/network), honouring Retry-After — see http_retry.
+    @http_retry(attempts=4, cap=30)
     def _get(self, params: dict[str, Any]) -> list[dict[str, Any]]:
         r = self._c.get(f"{self.base}/articles/", params=params)
         r.raise_for_status()

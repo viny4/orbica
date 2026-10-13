@@ -12,7 +12,7 @@ import io
 import logging
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from src.clients.http_retry import http_retry
 
 log = logging.getLogger("wikidata")
 
@@ -58,12 +58,8 @@ class WikidataClient:
     def __exit__(self, *_e: object) -> None:
         self.close()
 
-    @retry(
-        retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.TransportError)),
-        wait=wait_exponential(multiplier=2, min=2, max=20),
-        stop=stop_after_attempt(3),
-        reraise=True,
-    )
+    # Transient errors only (429/5xx/network), honouring Retry-After — see http_retry.
+    @http_retry(attempts=3, cap=20)
     def _csv(self, query: str) -> list[dict[str, str]]:
         r = self._c.get(self.base, params={"query": query})
         r.raise_for_status()
