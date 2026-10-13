@@ -50,7 +50,7 @@ func (h *Handlers) GetRocket(c *fiber.Ctx) error {
 			FROM rocket_vehicles rv
 			LEFT JOIN rocket_families rf ON rf.id = rv.family_id
 			LEFT JOIN agencies a ON a.id = rf.manufacturer_id
-			WHERE rv.id::text = $1 OR rv.slug = $1
+			WHERE (rv.slug = $1 OR rv.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END)
 		) t`, key)
 }
 
@@ -63,7 +63,7 @@ func (h *Handlers) RocketLaunches(c *fiber.Ctx) error {
 			SELECT le.id, le.name, le.mission_name, le.launch_time, le.launch_year,
 			       le.outcome, le.orbit_achieved
 			FROM launch_events le
-			WHERE le.rocket_id = (SELECT id FROM rocket_vehicles WHERE id::text = $1 OR slug = $1)
+			WHERE le.rocket_id = (SELECT k.id FROM rocket_vehicles k WHERE (k.slug = $1 OR k.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END))
 		) l`, key)
 }
 
@@ -80,7 +80,7 @@ func (h *Handlers) RocketPayloads(c *fiber.Ctx) error {
 			       s.orbit_type, s.status, s.launch_date
 			FROM satellites s
 			JOIN launch_events le ON le.id = s.launch_event_id
-			WHERE le.rocket_id = (SELECT id FROM rocket_vehicles WHERE id::text = $1 OR slug = $1)
+			WHERE le.rocket_id = (SELECT k.id FROM rocket_vehicles k WHERE (k.slug = $1 OR k.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END))
 			ORDER BY s.launch_date DESC NULLS LAST
 			LIMIT $2 OFFSET $3
 		) s`, key, limit, offset)

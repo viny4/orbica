@@ -12,7 +12,8 @@ func (h *Handlers) RocketArticles(c *fiber.Ctx) error {
 			FROM articles a
 			JOIN article_links al ON al.article_id = a.id
 			WHERE al.entity_type = 'rocket'
-			  AND al.entity_key = (SELECT id::text FROM rocket_vehicles WHERE id::text = $1 OR slug = $1)
+			  AND al.entity_key = (SELECT k.id::text FROM rocket_vehicles k WHERE (k.slug = $1 OR k.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END))
+			ORDER BY a.published_at DESC NULLS LAST -- newest 12, not any 12
 			LIMIT 12
 		) x`, id)
 }
@@ -31,7 +32,8 @@ func (h *Handlers) SatelliteArticles(c *fiber.Ctx) error {
 			  OR (al.entity_type = 'rocket' AND al.entity_key = (
 			        SELECT le.rocket_id::text FROM launch_events le WHERE le.id = s.launch_event_id))
 			JOIN articles a ON a.id = al.article_id
-			WHERE s.id::text = $1 OR s.slug = $1
+			WHERE (s.slug = $1 OR s.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END)
+			ORDER BY a.published_at DESC NULLS LAST -- newest 12, not any 12
 			LIMIT 12
 		) x`, id)
 }

@@ -62,7 +62,7 @@ func (h *Handlers) GetSatellite(c *fiber.Ctx) error {
 			       ) lr) AS launch
 			FROM satellites s
 			LEFT JOIN agencies op ON op.id = s.operator_id
-			WHERE s.id::text = $1 OR s.slug = $1
+			WHERE (s.slug = $1 OR s.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END)
 		) t`, key)
 }
 
@@ -74,7 +74,7 @@ func (h *Handlers) SatelliteTLE(c *fiber.Ctx) error {
 		FROM (
 			SELECT ts.satellite_id, ts.captured_at, ts.tle_line1, ts.tle_line2, ts.source
 			FROM tle_snapshots ts
-			WHERE ts.satellite_id = (SELECT id FROM satellites WHERE id::text = $1 OR slug = $1)
+			WHERE ts.satellite_id = (SELECT k.id FROM satellites k WHERE (k.slug = $1 OR k.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END))
 			ORDER BY ts.captured_at DESC
 			LIMIT 1
 		) t`, key)

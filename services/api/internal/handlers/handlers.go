@@ -2,17 +2,23 @@
 package handlers
 
 import (
+	"log/slog"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Handlers carries shared dependencies for all HTTP handlers.
 type Handlers struct {
-	DB *pgxpool.Pool
+	DB  *pgxpool.Pool
+	Log *slog.Logger
 }
 
-func New(pool *pgxpool.Pool) *Handlers {
-	return &Handlers{DB: pool}
+func New(pool *pgxpool.Pool, log *slog.Logger) *Handlers {
+	if log == nil {
+		log = slog.Default()
+	}
+	return &Handlers{DB: pool, Log: log}
 }
 
 // Register wires every REST route under /api/v1.
@@ -59,6 +65,7 @@ func (h *Handlers) Register(app *fiber.App) {
 	v1.Get("/stats/leaderboard", h.Leaderboard)
 	v1.Get("/stats/overview", h.StatsOverview)
 	v1.Get("/sync-logs", h.ListSyncLogs)
+	v1.Get("/sync-status", h.SyncStatus)
 }
 
 // fail writes a JSON error with the given status.

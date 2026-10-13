@@ -8,6 +8,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
+
+	"github.com/orbica/api/internal/httpx"
 )
 
 // isISOCountry reports whether s is exactly two uppercase A-Z letters. Rejects
@@ -72,18 +74,8 @@ func trackEvent(c *fiber.Ctx) error {
 	}
 	e.Timestamp = time.Now()
 
-	// Resolve the real visitor IP (never trust the body). Prefer Cloudflare's
-	// real-IP header, then the first hop of X-Forwarded-For (Render sets this),
-	// then the socket IP.
-	ip := c.Get("CF-Connecting-IP")
-	if ip == "" {
-		if xff := c.Get("X-Forwarded-For"); xff != "" {
-			ip = strings.TrimSpace(strings.Split(xff, ",")[0])
-		}
-	}
-	if ip == "" {
-		ip = c.IP()
-	}
+	// Resolve the real visitor IP (never trust the body); shared with the limiter.
+	ip := httpx.ClientIP(c)
 	if ip != "" {
 		e.rawIP = ip // transient — used for geo, never stored
 		h := sha256.Sum256([]byte(ip))

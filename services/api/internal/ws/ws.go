@@ -10,7 +10,19 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/orbica/api/internal/hub"
-	"github.com/orbica/api/internal/propagate"
+)
+
+const (
+	// A client that can't take a frame within this long is stalled. Without a
+	// deadline one dead TCP peer blocked the hub's sequential send loop — and
+	// froze the stream for every other viewer.
+	writeTimeout = 5 * time.Second
+	// Inbound messages are tiny control frames; anything larger is abuse.
+	maxMessageBytes = 4 << 10
+	// Cap per-connection subscriptions (the full catalogue is ~16k anyway).
+	maxSubs = 20_000
+	// The time machine scrubs ±6h in the UI; allow a generous ±7 days.
+	maxOffset = 7 * 24 * time.Hour
 )
 
 // inbound is the client → server control message.
@@ -23,7 +35,8 @@ type inbound struct {
 // conn implements hub.Client for a single WebSocket connection.
 type conn struct {
 	ws     *websocket.Conn
-	mu     sync.Mutex // guards writes + subs + offset
+	mu     sync.Mutex // guards subs + offset
+	wmu    sync.Mutex // serialises writes
 	subs   map[int]struct{}
 	offset time.Duration
 }
@@ -44,12 +57,12 @@ func (c *conn) Offset() time.Duration {
 	return c.offset
 }
 
-func (c *conn) Send(positions []propagate.Position) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	// Hand-rolled compact encoding rather than WriteJSON — see encodePositions.
-	if err := c.ws.WriteMessage(websocket.TextMessage, encodePositions(positions)); err != nil {
-		_ = c.ws.Close()
+func (c *conn) Send(payload []byte) {
+	c.wmu.Lock()
+	defer c.wmu.Unlock()
+	_ = c.ws.SetWriteDeadline(time.Now().Add(writeTimeout))
+	if err := c.ws.WriteMessage(websocket.TextMessage, payload); err != nil {
+		_ = c.ws.Close() // the read loop then exits and unregisters us
 	}
 }
 
@@ -58,6 +71,7 @@ func Handler(h *hub.Hub) fiber.Handler {
 	// Per-message deflate: the payload is highly repetitive numeric text, so it
 	// compresses hard and the CPU cost is trivial next to the egress saved.
 	return websocket.New(func(c *websocket.Conn) {
+		c.SetReadLimit(maxMessageBytes)
 		client := &conn{ws: c, subs: make(map[int]struct{})}
 		h.Register(client)
 		defer func() {
@@ -68,7 +82,7 @@ func Handler(h *hub.Hub) fiber.Handler {
 		for {
 			_, data, err := c.ReadMessage()
 			if err != nil {
-				return // client gone
+				return // client gone (or sent an oversized frame)
 			}
 			var msg inbound
 			if err := json.Unmarshal(data, &msg); err != nil {
@@ -84,12 +98,23 @@ func (c *conn) apply(msg inbound) {
 	defer c.mu.Unlock()
 	switch msg.Action {
 	case "subscribe":
-		c.subs[msg.NoradID] = struct{}{}
+		if len(c.subs) < maxSubs {
+			c.subs[msg.NoradID] = struct{}{}
+		}
 	case "unsubscribe":
 		delete(c.subs, msg.NoradID)
 	case "subscribe_all":
 		c.subs = make(map[int]struct{}) // empty set = all satellites
 	case "set_time":
-		c.offset = time.Duration(msg.OffsetSeconds) * time.Second
+		off := time.Duration(msg.OffsetSeconds) * time.Second
+		if off > maxOffset {
+			off = maxOffset
+		} else if off < -maxOffset {
+			off = -maxOffset
+		}
+		c.offset = off
 	}
 }
+
+// Encode is the hub's wire encoder (see encodePositions).
+var Encode hub.Encoder = encodePositions

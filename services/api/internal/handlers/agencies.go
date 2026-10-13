@@ -54,6 +54,6 @@ func (h *Handlers) GetAgency(c *fiber.Ctx) error {
 			         ) l
 			       ), '[]') AS launches
 			FROM agencies a
-			WHERE a.id::text = $1 OR a.slug = $1
+			WHERE (a.slug = $1 OR a.id = CASE WHEN $1 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN $1::uuid END)
 		) t`, key)
 }

@@ -36,7 +36,7 @@ func (h *Handlers) TimelineYear(c *fiber.Ctx) error {
 			LEFT JOIN rocket_vehicles rv ON rv.id = le.rocket_id
 			LEFT JOIN agencies a ON a.id = le.agency_id
 			WHERE le.launch_year = $1
-			ORDER BY le.launch_time
+			ORDER BY le.launch_time, le.id -- id tiebreak keeps pages stable
 			LIMIT $2 OFFSET $3
 		) l`, year, limit, offset)
 }
@@ -56,6 +56,7 @@ func (h *Handlers) TimelineOnThisDay(c *fiber.Ctx) error {
 			LEFT JOIN agencies a ON a.id = le.agency_id
 			WHERE EXTRACT(MONTH FROM le.launch_time) = EXTRACT(MONTH FROM CURRENT_DATE)
 			  AND EXTRACT(DAY FROM le.launch_time) = EXTRACT(DAY FROM CURRENT_DATE)
+			  AND le.launch_time < NOW() -- history only, not scheduled launches
 			ORDER BY le.launch_time DESC
 			LIMIT $1
 		) l`, limit)
