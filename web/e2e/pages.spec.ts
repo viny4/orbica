@@ -7,7 +7,7 @@ test.describe("core pages", () => {
     await page.goto("/");
     await expect(page).toHaveTitle(/Orbica/i);
     await expect(page.getByRole("heading", { level: 1 })).toContainText(/Every Rocket/i);
-    await expect(page.getByText(/Satellites tracked/i).first()).toBeVisible();
+    await expect(page.getByText(/Satellites & objects/i).first()).toBeVisible();
   });
 
   for (const path of ["/rockets", "/satellites", "/agencies", "/timeline", "/upcoming", "/intel"]) {
