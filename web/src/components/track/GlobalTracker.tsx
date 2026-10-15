@@ -6,11 +6,15 @@ import Link from "next/link";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { Earth } from "@/components/three/Earth";
-import { latLngAltToVec3, orbitPath, groundTrack, propagateTLE, type GeoPos } from "@/components/three/geo";
+import { latLngAltToVec3, groundTrack, propagateTLE, getOrbitalElements, type GeoPos } from "@/components/three/geo";
 import { useInView } from "@/components/three/useInView";
 import { WebGLGuard, WebGLFallback } from "@/components/three/WebGLGuard";
 import { Footprint } from "@/components/three/Footprint";
+import { OrbitPath } from "@/components/three/OrbitPath";
+import { SkyObjects } from "@/components/three/SkyObjects";
 import ISSHub from "./ISSHub";
+import TelemetryPanel, { type TrackedSat } from "./TelemetryPanel";
+import TimeMachine from "./TimeMachine";
 import ISSModel from "@/components/three/ISSModel";
 import ProceduralSatelliteModel from "@/components/three/ProceduralSatelliteModel";
 import { CountryLabels } from "@/components/three/CountryLabels";
@@ -33,6 +37,10 @@ interface Tracked {
   line1: string;
   line2: string;
 }
+
+// Palette cycled through as objects are added, so each tracked satellite keeps
+// a stable colour across the orbit path, marker and list.
+const TRACK_COLORS = ["#7df9ff", "#ffd166", "#6ee7a8", "#ff6b9d", "#c792ea", "#ff9e64"];
 
 type ColorMode = "orbit" | "purpose" | "constellation";
 
@@ -504,81 +512,72 @@ function SatelliteCloud({ positions, meta, mode, filter, dim, showMesh, onPick }
   );
 }
 
-// Orbit path + glowing marker for the tracked satellite, propagated client-side.
-function TrackedSatellite({ norad, name, satMeta, line1, line2, offsetMin, userCoords, onTelemetry, onNextPass, viewMode }: {
-  norad: number; name?: string; satMeta?: Meta; line1: string; line2: string; offsetMin: number; userCoords: {lat: number, lng: number} | null; onTelemetry: (p: GeoPos) => void; onNextPass?: (np: {time: Date, maxEl: number}|null) => void; viewMode: "orbit" | "sky" | "ride";
+// Orbit path + glowing marker for each tracked satellite, propagated client-side.
+function TrackedSatellite({ sat, isPrimary, offsetMin, userCoords, viewMode, onTelemetry }: {
+  sat: TrackedSat; isPrimary: boolean; offsetMin: number; userCoords: {lat: number, lng: number} | null;
+  viewMode: "orbit" | "sky" | "ride";
+  onTelemetry?: (p: GeoPos) => void;
 }) {
   const marker = useRef<THREE.Object3D>(null);
   const glow = useRef<THREE.Mesh>(null);
   const acc = useRef(99);
-  const orbit = useMemo(() => orbitPath(line1, line2, 240), [line1, line2]);
+  const { line1, line2, color } = sat;
+
   // Ground track: where the satellite passes over the surface for the next ~95 min.
   const ground = useMemo(() => groundTrack(line1, line2, 95, 220), [line1, line2]);
 
-  const [nextPass, setNextPass] = useState<{ time: Date, maxEl: number } | null>(null);
-  useEffect(() => {
-    if (!userCoords || norad === 25544) { setNextPass(null); return; }
-    
-    let maxEl = 0;
-    const now = Date.now();
-    let inPass = false;
-    let passStart = -1;
-    
-    for(let i=0; i<1440; i++) {
-      const t = now + i * 120000;
-      const p = propagateTLE(line1, line2, new Date(t));
-      if (!p) continue;
-      
-      const el = getElevation(userCoords.lat, userCoords.lng, p.lat, p.lng, p.altKm);
-      if (el > 10) {
-        if (!inPass) { inPass = true; passStart = t; }
-        if (el > maxEl) maxEl = el;
-      } else {
-        if (inPass) {
-          if (passStart > now) {
-             setNextPass({ time: new Date(passStart), maxEl });
-             return;
-          }
-          inPass = false;
-          maxEl = 0;
-        }
-      }
-    }
-    setNextPass(null);
-  }, [userCoords, line1, line2, norad]);
-
-  useEffect(() => {
-    if (onNextPass) onNextPass(nextPass);
-  }, [nextPass, onNextPass]);
+  const orbitWidth = isPrimary ? 2.2 : 1.4;
 
   useFrame((_, delta) => {
     acc.current += delta;
-    if (acc.current < 0.25) return;
+    if (acc.current < 0.2) return;
     acc.current = 0;
 
     // Every object — the ISS included — is propagated from its TLE, so the
-    // time machine applies uniformly. (The ISS used to poll open-notify, whose
-    // HTTPS endpoint doesn't answer, and which ignored the time offset.)
+    // time machine applies uniformly.
     const p: GeoPos | null = propagateTLE(line1, line2, new Date(Date.now() + offsetMin * 60000));
 
     if (p && marker.current) {
       const v = latLngAltToVec3(p.lat, p.lng, p.altKm);
       marker.current.position.set(v[0], v[1], v[2]);
       glow.current?.position.set(v[0], v[1], v[2]);
-      onTelemetry(p);
+      if (isPrimary && onTelemetry) onTelemetry(p);
     }
   });
+
   return (
     <>
-      {orbit.length > 1 && <Line points={orbit} color="#7df9ff" lineWidth={2} transparent opacity={0.85} />}
-      {/* ground track on the surface (hidden in sky view) */}
-      {viewMode !== "sky" && ground.length > 1 && (
-        <Line points={ground} color="#34d399" lineWidth={1.5} transparent opacity={0.7} dashed dashScale={50} />
+      {/* Full orbit, split into sunlit + eclipse arcs; only the primary gets shadows. */}
+      {viewMode !== "sky" && (
+        <OrbitPath
+          line1={line1}
+          line2={line2}
+          color={color}
+          shadowColor={isPrimary ? "#ff5c7a" : color}
+          samples={isPrimary ? 360 : 160}
+        />
       )}
-      <mesh ref={glow}><sphereGeometry args={[viewMode === "sky" ? 0.005 : 0.07, 16, 16]} /><meshBasicMaterial color="#7df9ff" transparent opacity={0.3} /></mesh>
+      {/* ground track on the surface (hidden in sky view) */}
+      {viewMode !== "sky" && isPrimary && ground.length > 1 && (
+        <Line points={ground} color="#34d399" lineWidth={1.5} transparent opacity={0.6} dashed dashScale={50} />
+      )}
+
+      {/* Glow halo — larger and brighter for the primary target */}
+      <mesh ref={glow}>
+        <sphereGeometry args={[viewMode === "sky" ? 0.005 : isPrimary ? 0.07 : 0.045, 16, 16]} />
+        <meshBasicMaterial color={color} transparent opacity={isPrimary ? 0.3 : 0.2} />
+        {/* Targeting reticle for the primary target (inherits the halo transform) */}
+        {isPrimary && viewMode !== "sky" && (
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[0.12, 0.135, 40]} />
+            <meshBasicMaterial color={color} transparent opacity={0.45} side={THREE.DoubleSide} />
+          </mesh>
+        )}
+      </mesh>
+
       <group ref={marker as any}>
-        {viewMode !== "sky" && (norad === 25544 ? <ISSModel /> : (
-          <ProceduralSatelliteModel purpose={satMeta?.purpose} constellation={satMeta?.constellation} name={name} />
+        {viewMode !== "sky" && isPrimary && (sat.norad === 25544 ? <ISSModel /> : (
+          <ProceduralSatelliteModel purpose={sat.purpose} constellation={sat.constellation} name={sat.name} />
         ))}
       </group>
     </>
@@ -624,9 +623,17 @@ export default function GlobalTracker() {
   const { ref, inView, armed } = useInView<HTMLDivElement>("0px");
   const [mode, setMode] = useState<ColorMode>("orbit");
   const [filter, setFilter] = useState<string | null>(null);
-  const [tracked, setTracked] = useState<Tracked | null>(null);
+  const [trackedSats, setTrackedSats] = useState<TrackedSat[]>([]);
+  const [primaryNorad, setPrimaryNorad] = useState<number | null>(null);
   const [telemetry, setTelemetry] = useState<GeoPos | null>(null);
-  const [nextPass, setNextPass] = useState<{time: Date, maxEl: number} | null>(null);
+  const trackedRef = useRef<TrackedSat[]>([]);
+  trackedRef.current = trackedSats;
+  // The panel + ride-along follow the "primary" target: the last one picked,
+  // falling back to the first so removing the primary doesn't leave a gap.
+  const primary = useMemo(
+    () => trackedSats.find((s) => s.norad === primaryNorad) ?? trackedSats[0] ?? null,
+    [trackedSats, primaryNorad],
+  );
   const [query, setQuery] = useState("");
   const [showPanel, setShowPanel] = useState(true);
   const [showMesh, setShowMesh] = useState(false);
@@ -634,8 +641,8 @@ export default function GlobalTracker() {
   const conjunctions = useConjunctions();
   // Ride-along has no target once the satellite is untracked — fall back to orbit.
   useEffect(() => {
-    if (viewMode === "ride" && !tracked) setViewMode("orbit");
-  }, [viewMode, tracked]);
+    if (viewMode === "ride" && !primary) setViewMode("orbit");
+  }, [viewMode, primary]);
 
   const [offsetMin, setOffsetMin] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
@@ -643,6 +650,7 @@ export default function GlobalTracker() {
   useEffect(() => { setOffset(offsetMin * 60); }, [offsetMin, setOffset]);
   const shownTime = useMemo(() => new Date(clock + offsetMin * 60000), [clock, offsetMin]);
   const sun = useMemo(() => sunDirection(shownTime), [shownTime]);
+  const sunVec = useMemo(() => new THREE.Vector3(...sun), [sun]);
 
   const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [userLocationName, setUserLocationName] = useState<string | null>(null);
@@ -736,18 +744,44 @@ export default function GlobalTracker() {
   const track = useCallback(async (norad: number) => {
     const m = meta.get(norad);
     if (!m) return;
+    // Already tracked? Just promote it to the primary target.
+    if (trackedRef.current.some((s) => s.norad === norad)) {
+      setPrimaryNorad(norad);
+      setQuery("");
+      return;
+    }
     try {
       const r = await apiFetch(`/api/v1/satellites/${m.id}/tle`);
       if (!r.ok) return;
       const t = await r.json();
       if (t?.tle_line1 && t?.tle_line2) {
-        setTracked({ norad, name: m.name, slug: m.id, line1: t.tle_line1, line2: t.tle_line2 });
+        setTrackedSats((prev) => {
+          if (prev.some((s) => s.norad === norad)) return prev;
+          const color = TRACK_COLORS[prev.length % TRACK_COLORS.length];
+          const next: TrackedSat[] = [
+            ...prev,
+            { norad, name: m.name, slug: m.id, line1: t.tle_line1, line2: t.tle_line2, color, purpose: m.purpose, constellation: m.constellation },
+          ];
+          return next.slice(-6); // cap concurrent targets for clarity + perf
+        });
+        setPrimaryNorad(norad);
         setTelemetry(null);
-        setNextPass(null);
         setQuery("");
       }
     } catch { /* ignore */ }
   }, [meta]);
+
+  const untrack = useCallback((norad: number) => {
+    setTrackedSats((prev) => prev.filter((s) => s.norad !== norad));
+    setPrimaryNorad((p) => (p === norad ? null : p));
+    setTelemetry(null);
+  }, []);
+
+  const primaryPeriod = useMemo(() => {
+    if (!primary) return null;
+    const el = getOrbitalElements(primary.line1, primary.line2);
+    return el?.period ?? null;
+  }, [primary]);
 
   const regime = useMemo(() => tally(positions, (p) => band(p.altitude_km)), [positions]);
   const purpose = useMemo(() => tally(positions, (p) => meta.get(p.norad_id)?.purpose ?? null).slice(0, 8), [positions, meta]);
@@ -789,6 +823,53 @@ export default function GlobalTracker() {
             <span className={`inline-block w-2 h-2 rounded-full ${status === "live" ? "bg-success" : status === "connecting" ? "bg-amber-400" : "bg-red-400"}`} />
             <span className="text-ink-2">{status === "live" ? `${positions.length.toLocaleString()} live` : status}</span>
           </div>
+
+          {/* Tracked objects — multi-target shelf */}
+          <div>
+            <div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2 flex justify-between items-center">
+              <span>Tracked objects</span>
+              <span className="text-ink-4 font-mono text-[9px]">{trackedSats.length}/6</span>
+            </div>
+            {trackedSats.length === 0 ? (
+              <p className="text-[11px] text-ink-4 font-light leading-relaxed">
+                Search a satellite to plot its orbit. Add up to six to compare.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {trackedSats.map((s) => {
+                  const isPrimary = primary?.norad === s.norad;
+                  return (
+                    <div
+                      key={s.norad}
+                      className={`group flex items-center gap-2 border p-2 transition-colors ${isPrimary ? "border-white/25 bg-white/[0.04]" : "border-line bg-white/[0.01] hover:bg-white/[0.03]"}`}
+                    >
+                      <button
+                        onClick={() => { setPrimaryNorad(s.norad); setTelemetry(null); }}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        title="Make primary target"
+                      >
+                        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: s.color, boxShadow: isPrimary ? `0 0 8px ${s.color}` : "none" }} />
+                        <span className={`truncate text-[11px] ${isPrimary ? "text-white" : "text-ink-2"}`}>{s.name}</span>
+                        {isPrimary && <span className="ml-auto shrink-0 font-mono text-[8px] uppercase tracking-widest text-accent">primary</span>}
+                      </button>
+                      <button
+                        onClick={() => untrack(s.norad)}
+                        className="shrink-0 px-1 text-ink-4 transition-colors hover:text-danger"
+                        aria-label={`Stop tracking ${s.name}`}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+                <button onClick={() => { setTrackedSats([]); setPrimaryNorad(null); setTelemetry(null); }}
+                  className="w-full pt-1 text-right font-mono text-[9px] uppercase tracking-[0.18em] text-ink-4 hover:text-danger">
+                  clear all
+                </button>
+              </div>
+            )}
+          </div>
+
           <div>
             <div className="text-[10px] tracking-[0.25em] uppercase text-ink-4 mb-2">Colour by</div>
             <div className="flex gap-px bg-white/10">
@@ -886,27 +967,35 @@ export default function GlobalTracker() {
             <ambientLight intensity={0.16} />
             <directionalLight position={sun} intensity={2} />
             <Suspense fallback={<Html center>Loading globe…</Html>}>
-              <Stars radius={90} depth={50} count={4000} factor={4} fade />
-              {viewMode !== "sky" && <Earth spin={false} />}
+              {viewMode !== "sky" && <Stars radius={90} depth={50} count={4000} factor={4} fade />}
+              {viewMode === "sky" && <SkyObjects showLabels when={shownTime} />}
+              {viewMode !== "sky" && (
+                <Earth spin={false} sunDirection={sunVec} />
+              )}
               {viewMode !== "sky" && <CountryLabels />}
               {userCoords && <UserLocationMarker lat={userCoords.lat} lng={userCoords.lng} />}
-              <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={Boolean(tracked)} showMesh={showMesh} onPick={(p) => track(p.norad_id)} />
-              {tracked && <TrackedSatellite norad={tracked.norad} name={tracked.name} satMeta={meta.get(tracked.norad)} line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} userCoords={userCoords} onTelemetry={setTelemetry} onNextPass={setNextPass} viewMode={viewMode} />}
-              {tracked && telemetry && (
-                <Footprint
-                  lat={telemetry.lat}
-                  lng={telemetry.lng}
-                  altKm={telemetry.altKm}
-                  color="#7df9ff"
+              <SatelliteCloud positions={positions} meta={meta} mode={mode} filter={filter} dim={trackedSats.length > 0} showMesh={showMesh} onPick={(p) => track(p.norad_id)} />
+              {trackedSats.map((s) => (
+                <TrackedSatellite
+                  key={s.norad}
+                  sat={s}
+                  isPrimary={primary?.norad === s.norad}
+                  offsetMin={offsetMin}
+                  userCoords={userCoords}
+                  onTelemetry={primary?.norad === s.norad ? setTelemetry : undefined}
+                  viewMode={viewMode}
                 />
+              ))}
+              {primary && telemetry && viewMode !== "sky" && (
+                <Footprint lat={telemetry.lat} lng={telemetry.lng} altKm={telemetry.altKm} color={primary.color} />
               )}
               <SkyCamera userCoords={userCoords} active={viewMode === "sky"} />
               {viewMode === "sky" && userCoords && <HorizonDome userCoords={userCoords} />}
-              {tracked && (
-                <RideAlongCamera line1={tracked.line1} line2={tracked.line2} offsetMin={offsetMin} active={viewMode === "ride"} />
+              {primary && (
+                <RideAlongCamera line1={primary.line1} line2={primary.line2} offsetMin={offsetMin} active={viewMode === "ride"} />
               )}
             </Suspense>
-            <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={!tracked && viewMode === "orbit"} autoRotateSpeed={0.18} enabled={viewMode === "orbit"} />
+            <OrbitControls enablePan={false} minDistance={3.2} maxDistance={20} autoRotate={trackedSats.length === 0 && viewMode === "orbit"} autoRotateSpeed={0.18} enabled={viewMode === "orbit"} />
           </Canvas>
           </WebGLGuard>
         )}
@@ -921,7 +1010,7 @@ export default function GlobalTracker() {
               {viewMode === "sky" ? "Exit Sky View" : "🔭 Enter Sky View"}
             </button>
           )}
-          {tracked && (
+          {primary && (
             <button
               onClick={() => setViewMode(v => v === "ride" ? "orbit" : "ride")}
               className={`flex items-center gap-2 px-5 py-2.5 border rounded-full text-[11px] font-mono uppercase tracking-widest transition-all shadow-xl backdrop-blur-md ${viewMode === "ride" ? "bg-cyan-500/20 border-cyan-400 text-cyan-300 shadow-cyan-500/20" : "bg-black/50 border-line-strong text-ink-2 hover:bg-white/10 hover:text-white hover:border-white/50"}`}
@@ -951,35 +1040,23 @@ export default function GlobalTracker() {
           </div>
         </div>
 
-        {/* tracked telemetry HUD */}
-        {tracked && (
-          tracked.norad === 25544 ? (
+        {/* tracked telemetry HUD — full panel for the primary target */}
+        {primary && (
+          primary.norad === 25544 ? (
             <ISSHub
               velocity={telemetry?.speedKmS ?? 7.66}
               altitude={telemetry?.altKm ?? 418.5}
-              onClose={() => { setTracked(null); setTelemetry(null); }}
+              onClose={() => untrack(25544)}
             />
           ) : (
-            <div className="absolute bottom-16 left-3 bg-black/70 backdrop-blur border border-accent/40 p-4 w-64">
-              <div className="flex items-start justify-between gap-3">
-                <span className="text-accent font-semibold text-sm">{tracked.name}</span>
-                <button onClick={() => { setTracked(null); setTelemetry(null); setNextPass(null); }} className="text-ink-4 hover:text-white text-xs">✕</button>
-              </div>
-              {telemetry ? (
-                <div className="mt-2 space-y-0.5 text-xs font-mono text-ink-2">
-                  <div>lat {telemetry.lat.toFixed(2)}°  lng {telemetry.lng.toFixed(2)}°</div>
-                  <div>alt {telemetry.altKm.toFixed(0)} km</div>
-                  <div>vel {telemetry.speedKmS.toFixed(2)} km/s</div>
-                </div>
-              ) : <div className="mt-2 text-xs text-ink-4">propagating…</div>}
-              {nextPass && (
-                <div className="mt-3 p-2 bg-emerald-500/10 border border-emerald-500/20 text-success text-[10px] font-mono">
-                  <div className="uppercase tracking-widest text-emerald-400/60 mb-0.5">Next Flyover</div>
-                  <div>{nextPass.time.toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })} (Max El: {Math.round(nextPass.maxEl)}°)</div>
-                </div>
-              )}
-              <Link href={`/satellites/${tracked.slug}`} className="inline-block mt-2 text-[11px] tracking-[0.15em] uppercase text-accent/80 hover:text-accent">Details →</Link>
-            </div>
+            <TelemetryPanel
+              key={primary.norad}
+              tracked={primary}
+              telemetry={telemetry}
+              userCoords={userCoords}
+              offsetMin={offsetMin}
+              onClose={() => untrack(primary.norad)}
+            />
           )
         )}
 
@@ -989,15 +1066,7 @@ export default function GlobalTracker() {
         </button>
 
         {/* time machine */}
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 border border-line-strong px-4 py-2">
-          <button onClick={() => setOffsetMin(0)} className={`text-[10px] tracking-[0.2em] uppercase px-2.5 py-1 border transition-colors ${offsetMin === 0 ? "border-emerald-400/60 text-success" : "border-line-strong text-ink-2 hover:text-white"}`}>
-            {offsetMin === 0 ? "● Live" : "Live"}
-          </button>
-          <input type="range" min={-360} max={360} step={1} value={offsetMin} onChange={(e) => setOffsetMin(Number(e.target.value))} className="w-40 sm:w-56 accent-accent cursor-pointer" aria-label="Time machine" />
-          <span className="font-mono text-xs text-ink-2 tabular-nums w-44 text-center hidden sm:block">
-            {shownTime.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" })}
-          </span>
-        </div>
+        <TimeMachine offsetMin={offsetMin} setOffsetMin={setOffsetMin} shownTime={shownTime} orbitPeriodMin={primaryPeriod} />
       </div>
     </div>
   );
